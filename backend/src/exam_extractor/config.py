@@ -1,0 +1,102 @@
+"""Configuration with safe defaults and TOML overrides."""
+
+from dataclasses import dataclass, field
+from pathlib import Path
+import os
+import tomllib
+from typing import Any
+
+
+@dataclass
+class SpeechConfig:
+    provider: str = "auto"
+    model: str = "base.en"
+    language: str | None = "en"
+    device: str = "auto"
+
+
+@dataclass
+class FrameConfig:
+    method: str = "scene_change"
+    scene_threshold: float = 0.15
+    fallback_interval_seconds: float = 10.0
+    max_resolution: int = 720
+
+
+@dataclass
+class OCRConfig:
+    provider: str = "tesseract"
+    preprocess: bool = True
+    confidence_threshold: float = 0.60
+    language: str = "eng"
+
+
+@dataclass
+class LLMConfig:
+    enabled: bool = False
+    provider: str = "none"
+    model: str | None = None
+    vision_model: str | None = None
+    base_url: str | None = None
+    api_key_env: str | None = None
+    temperature: float = 0.1
+
+
+@dataclass
+class OutputConfig:
+    markdown: bool = True
+    json: bool = True
+    transcript: bool = False
+    include_frame_links: bool = True
+
+
+@dataclass
+class PipelineConfig:
+    profile: str = "balanced"
+    output_dir: Path = Path("outputs")
+    speech: SpeechConfig = field(default_factory=SpeechConfig)
+    frames: FrameConfig = field(default_factory=FrameConfig)
+    ocr: OCRConfig = field(default_factory=OCRConfig)
+    llm: LLMConfig = field(default_factory=LLMConfig)
+    output: OutputConfig = field(default_factory=OutputConfig)
+
+    @classmethod
+    def from_toml(cls, path: Path) -> "PipelineConfig":
+        """Load a TOML configuration over the safe defaults."""
+        with path.open("rb") as handle:
+            data: dict[str, Any] = tomllib.load(handle)
+        config = cls()
+        config.profile = data.get("profile", config.profile)
+        config.output_dir = Path(data.get("output_dir", config.output_dir))
+        for section_name, target in (
+            ("speech", config.speech),
+            ("frames", config.frames),
+            ("ocr", config.ocr),
+            ("llm", config.llm),
+            ("output", config.output),
+        ):
+            for key, value in data.get(section_name, {}).items():
+                if not hasattr(target, key):
+                    raise ValueError(f"Unknown configuration key: {section_name}.{key}")
+                setattr(target, key, value)
+        config.validate()
+        return config
+
+    def validate(self) -> None:
+        """Validate cross-platform configuration values."""
+        if not self.profile:
+            raise ValueError("profile cannot be empty")
+        if not 0 <= self.frames.scene_threshold <= 1:
+            raise ValueError("frames.scene_threshold must be between 0 and 1")
+        if self.frames.fallback_interval_seconds <= 0:
+            raise ValueError("frames.fallback_interval_seconds must be positive")
+        if not 0 <= self.ocr.confidence_threshold <= 1:
+            raise ValueError("ocr.confidence_threshold must be between 0 and 1")
+        if not 0 <= self.llm.temperature <= 2:
+            raise ValueError("llm.temperature must be between 0 and 2")
+        if self.llm.enabled and self.llm.provider == "none":
+            raise ValueError("llm.provider cannot be 'none' when llm.enabled is true")
+
+    def api_key(self) -> str | None:
+        """Resolve the configured API key without storing it in the config."""
+        return os.environ.get(self.llm.api_key_env) if self.llm.api_key_env else None
