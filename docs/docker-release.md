@@ -7,7 +7,7 @@ or a separately tagged image only if the dependency size becomes a real issue.
 
 ```text
 <dockerhub-user>/exam-video-extractor:latest
-<dockerhub-user>/exam-video-extractor:0.1.2
+<dockerhub-user>/exam-video-extractor:0.1.3
 <dockerhub-user>/exam-video-extractor:sha-<commit>
 ```
 

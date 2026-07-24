@@ -16,13 +16,13 @@ Ollama, or another compatible endpoint.
 
 ## Current release
 
-The published v0.1.2 image is:
+The published v0.1.3 image is:
 
 ~~~text
-docker.io/alaaeldeenessam/exam-video-extractor:0.1.2
+docker.io/alaaeldeenessam/exam-video-extractor:0.1.3
 ~~~
 
-The workflow also publishes 0.1, latest, and a commit-SHA tag. Use 0.1.2 for
+The workflow also publishes 0.1, latest, and a commit-SHA tag. Use 0.1.3 for
 reproducible deployments and latest only when automatic upgrades are desired.
 
 ## Zero-code Docker usage
@@ -33,7 +33,7 @@ installing Python or Node.js, or reading the source code.
 Pull the image:
 
 ~~~powershell
-docker pull alaaeldeenessam/exam-video-extractor:0.1.2
+docker pull alaaeldeenessam/exam-video-extractor:0.1.3
 ~~~
 
 Create persistent Docker volumes once:
@@ -52,7 +52,7 @@ docker run -d `
   --publish 8000:8000 `
   --volume exam_extractor_outputs:/data/outputs `
   --volume exam_extractor_models:/data/models `
-  alaaeldeenessam/exam-video-extractor:0.1.2
+  alaaeldeenessam/exam-video-extractor:0.1.3
 ~~~
 
 Open the application in a browser:
@@ -112,7 +112,7 @@ docker run -d `
   --env-file .env `
   --volume exam_extractor_outputs:/data/outputs `
   --volume exam_extractor_models:/data/models `
-  alaaeldeenessam/exam-video-extractor:0.1.2
+  alaaeldeenessam/exam-video-extractor:0.1.3
 ~~~
 
 The .env file stays on the host and is not part of the image. Protect it, do
@@ -122,9 +122,9 @@ deterministic question extraction, and public local Whisper models work without
 API keys.
 
 The keys make providers available to the server; they do not automatically
-select a provider. The current UI directly selects speech mode. LLM provider
-selection and model settings are available through the advanced API options
-documented below. The default no-key path remains fully usable.
+select a provider. The UI's collapsed Advanced settings panel can select the
+LLM provider, model, endpoint, output language, OCR language, and input speech
+language. The default no-key path remains fully usable.
 
 For a GUI-only Docker Desktop workflow, create the container in Docker Desktop,
 map host port 8000 to container port 8000, add named volumes at
@@ -229,7 +229,7 @@ OPENROUTER_API_KEY=
 HF_TOKEN=
 
 # Optional:
-# EXTRACTOR_IMAGE=alaaeldeenessam/exam-video-extractor:0.1.2
+# EXTRACTOR_IMAGE=alaaeldeenessam/exam-video-extractor:0.1.3
 # EXTRACTOR_PORT=8000
 # EXTRACTOR_WORKERS=2
 # MAX_UPLOAD_BYTES=4294967296
@@ -238,7 +238,7 @@ HF_TOKEN=
 Windows PowerShell:
 
 ~~~powershell
-$env:EXTRACTOR_IMAGE = "alaaeldeenessam/exam-video-extractor:0.1.2"
+$env:EXTRACTOR_IMAGE = "alaaeldeenessam/exam-video-extractor:0.1.3"
 docker pull $env:EXTRACTOR_IMAGE
 docker compose up -d --no-build
 ~~~
@@ -246,7 +246,7 @@ docker compose up -d --no-build
 Linux:
 
 ~~~bash
-export EXTRACTOR_IMAGE=alaaeldeenessam/exam-video-extractor:0.1.2
+export EXTRACTOR_IMAGE=alaaeldeenessam/exam-video-extractor:0.1.3
 docker pull "$EXTRACTOR_IMAGE"
 docker compose up -d --no-build
 ~~~
@@ -328,9 +328,11 @@ cached models and outputs is intentional.
 1. Open http://localhost:8000.
 2. Paste a YouTube URL, or choose Upload file.
 3. Select a speech mode.
-4. Click Extract study material.
-5. Monitor acquire, speech, frames, OCR, questions, and render.
-6. Download Markdown, JSON, Word, and transcript artifacts when enabled.
+4. Optionally expand Advanced settings to select profiles, languages, an LLM
+   provider/model, or visual analysis.
+5. Click Extract study material.
+6. Monitor acquire, speech, frames, OCR, questions, and render.
+7. Download Markdown, JSON, Word, transcript, and review artifacts when enabled.
 
 Uploaded extensions are .mp4, .mkv, .webm, .mov, .m4a, .mp3, .wav, .flac, and
 .pdf. MAX_UPLOAD_BYTES defaults to 4 GiB.
@@ -374,13 +376,27 @@ The default model is base.en. tiny.en is lighter and faster; larger models need
 more disk, RAM, and time. CPU selects int8 automatically. The published image
 is CPU-first; CUDA requires a separately prepared GPU runtime.
 
+### Processing profiles
+
+The profile selector changes actual backend settings. Advanced values override
+the selected profile.
+
+| Profile | Speech | Frames | Resolution | Use when |
+|---|---|---|---:|---|
+| Fast | tiny.en, beam 1 | 30-second interval | 480p | quick previews and low-resource machines |
+| Balanced | base.en, beam 5 | scene change, 10-second fallback | 720p | recommended default |
+| High Accuracy | small.en, beam 8 | dense scene-change sampling, 5-second fallback | 1080p | important or visually dense material |
+
+High Accuracy does not silently enable a paid LLM. Enable LLM enrichment explicitly
+in Advanced settings.
+
 Example TOML:
 
 ~~~toml
 [speech]
 provider = "auto"
 model = "base.en"
-language = "en"
+language = "auto"
 device = "auto"
 compute_type = "auto"
 vad_filter = true
@@ -440,9 +456,12 @@ Current LLM providers:
 | Provider | Endpoint style | Required configuration |
 |---|---|---|
 | none | no network call | none |
+| openai | /chat/completions | model, OPENAI_API_KEY |
 | openai_compatible | /chat/completions | base_url, model, api_key_env |
+| openrouter | /chat/completions | model, OPENROUTER_API_KEY |
 | gemini | native generateContent | model, api_key_env |
 | ollama | /api/chat | base_url, model |
+| huggingface | OpenAI-compatible /chat/completions | base_url, model, HF_TOKEN |
 
 OpenAI-compatible configuration can be used for OpenAI, OpenRouter, and
 self-hosted compatible servers.
@@ -485,9 +504,27 @@ base_url = "http://host.docker.internal:11434"
 The Ollama model must already exist on the Ollama host. On Linux, use a
 reachable host address or configure a host-gateway mapping.
 
-The UI currently exposes speech selection and profile labels. Profile labels are
-stored in the manifest; actual advanced tuning is done with API options or a
-CLI TOML file.
+The UI exposes speech selection, real processing profiles, language selection,
+LLM provider/model controls, and visual-analysis controls in the collapsed
+Advanced settings panel. API keys are never sent to or displayed by the browser.
+
+## Language handling
+
+Input language controls captions and speech recognition. `auto` is the default
+and preserves the detected transcript language. Output language controls the
+language requested from the optional LLM; `same` preserves the source language.
+For example, Arabic captions with output language English require an enabled
+translation-capable LLM. OCR language is independent and supports `eng`, `ara`,
+and `eng+ara` when the corresponding Tesseract packs are installed.
+
+## Human review
+
+Questions below the default confidence threshold of `0.70`, questions without a
+detected answer, and questions with extraction warnings are marked
+`needs_review`. Completed jobs show a Human review panel where you can edit the
+prompt, options, answer, explanation, and reviewer note, then approve, edit, or
+reject the record. Review state is persisted in `review.json`, `questions.json`,
+`extraction.json`, `extraction.md`, and the Word artifact.
 
 ## Advanced API
 
@@ -497,12 +534,16 @@ The server is available at http://localhost:8000.
 GET  /health/live
 GET  /health/ready
 GET  /api/providers
+GET  /api/settings/options
 GET  /api/config/default
 POST /api/jobs
 POST /api/jobs/file
 GET  /api/jobs/{job_id}
 GET  /api/jobs/{job_id}/events
 POST /api/jobs/{job_id}/cancel
+GET  /api/jobs/{job_id}/review
+PATCH /api/jobs/{job_id}/review/{question_id}
+POST /api/jobs/{job_id}/review/complete
 GET  /api/jobs/{job_id}/artifacts/{path}
 ~~~
 
@@ -511,12 +552,12 @@ Example request:
 ~~~json
 {
   "source": "https://www.youtube.com/watch?v=VIDEO_ID",
-  "profile": "advanced",
+  "profile": "high_accuracy",
   "options": {
     "speech": {
       "provider": "auto",
       "model": "base.en",
-      "language": "en"
+      "language": "auto"
     },
     "frames": {
       "method": "interval",
@@ -532,7 +573,8 @@ Example request:
       "model": "your-model",
       "base_url": "https://api.openai.com/v1",
       "api_key_env": "OPENAI_API_KEY",
-      "vision_enabled": true
+      "vision_enabled": true,
+      "output_language": "same"
     },
     "output": {
       "markdown": true,
@@ -549,7 +591,7 @@ PowerShell request:
 ~~~powershell
 $payload = @{
   source = "https://www.youtube.com/watch?v=VIDEO_ID"
-  profile = "advanced"
+  profile = "high_accuracy"
   options = @{
     speech = @{ provider = "auto"; model = "base.en" }
     frames = @{ method = "interval"; fallback_interval_seconds = 30.0; max_resolution = 900 }
@@ -624,6 +666,7 @@ frames.json         frame timestamps and methods
 ocr.json            OCR text, confidence, and frame references
 transcript.json     timestamped transcript segments and words
 questions.json      structured questions and evidence
+review.json         review queue, decisions, and confidence summary
 extraction.json     combined machine-readable output
 extraction.md       human-readable study output
 extraction.docx     Word study document with text and embedded visual evidence
@@ -738,9 +781,9 @@ DOCKERHUB_TOKEN
 Publish a new release:
 
 ~~~bash
-git tag -a v0.1.2 -m "Release v0.1.2"
+git tag -a v0.1.3 -m "Release v0.1.3"
 git push origin main
-git push origin v0.1.2
+git push origin v0.1.3
 ~~~
 
 Monitor the workflow:

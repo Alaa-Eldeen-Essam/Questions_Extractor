@@ -4,7 +4,7 @@ output_dir = "outputs"
 [speech]
 provider = "auto"
 model = "base.en"
-language = "en"
+language = "auto"
 device = "auto"
 compute_type = "auto"
 translate = false
@@ -34,6 +34,7 @@ max_tokens = 2048
 timeout_seconds = 120.0
 retry_count = 1
 vision_enabled = true
+output_language = "same"
 
 [output]
 markdown = true
@@ -45,3 +46,7 @@ include_frame_links = true
 [privacy]
 redact_source = false
 # retention_days = 30
+
+[review]
+enabled = true
+threshold = 0.70

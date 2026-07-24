@@ -14,4 +14,24 @@ Safe defaults favor local, deterministic processing:
 API keys are referenced by environment-variable name and are never stored in
 TOML configuration or job artifacts.
 
-Advanced profiles will be added in Phase 1 when providers become executable.
+The web UI and API provide Fast, Balanced, and High Accuracy profiles. Advanced
+values override the selected profile. Input language defaults to auto-detect;
+LLM output language defaults to `same` as the source. Low-confidence questions
+are placed in the human-review queue using `review.threshold` (default `0.70`).
+
+Example:
+
+```toml
+profile = "balanced"
+
+[speech]
+language = "auto"
+
+[llm]
+enabled = false
+output_language = "same"
+
+[review]
+enabled = true
+threshold = 0.70
+```
