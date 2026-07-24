@@ -4,12 +4,14 @@ const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 const stages = ["acquire", "speech", "frames", "ocr", "questions", "render"];
 
 type Job = { job_id: string; status: string; warnings?: string[]; outputs?: string[]; stages?: Record<string, { status: string }> };
-type Question = { prompt: string; options: { label: string; text: string }[]; answer?: string; explanation?: string; confidence?: number; warnings?: string[] };
+type Question = { question_id?: string; prompt: string; options: { label: string; text: string }[]; answer?: string; explanation?: string; confidence?: number; warnings?: string[]; review_status?: string };
 type Extraction = { questions?: Question[]; transcript?: { language?: string; segments?: { text: string; start_seconds: number }[] }; ocr?: { text: string; frame: { timestamp_seconds: number; path: string } }[] };
 type Option = { id: string; label: string };
 type Profile = { id: string; label: string; description: string };
 type Provider = { id: string; label: string; configured: boolean; default_base_url?: string; default_api_key_env?: string; model_examples: string[] };
 type SettingsOptions = { profiles: Profile[]; languages: Option[]; ocr_languages: Option[]; llm: Provider[] };
+type ReviewItem = { question_id: string; prompt: string; options: { label: string; text: string }[]; answer?: string; explanation?: string; confidence?: number; warnings?: string[]; review_status: string; review_note?: string };
+type ReviewResponse = { summary: { total: number; needs_review: number; completed: boolean; counts: Record<string, number> }; items: ReviewItem[]; completed_by_human?: boolean };
 
 function App() {
   const [source, setSource] = useState("");
@@ -27,6 +29,10 @@ function App() {
   const [llmVision, setLlmVision] = useState(true);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [settings, setSettings] = useState<SettingsOptions | null>(null);
+  const [review, setReview] = useState<ReviewResponse | null>(null);
+  const [selectedReviewId, setSelectedReviewId] = useState<string | null>(null);
+  const [reviewDraft, setReviewDraft] = useState({ prompt: "", answer: "", explanation: "", options: "", review_note: "" });
+  const [reviewBusy, setReviewBusy] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
   const [data, setData] = useState<Extraction | null>(null);
   const [error, setError] = useState("");
@@ -47,6 +53,18 @@ function App() {
       if (response.ok) setJob(await response.json());
     }, 1000);
     return () => window.clearInterval(timer);
+  }, [job?.job_id, job?.status]);
+
+  useEffect(() => {
+    if (job?.status !== "completed") return;
+    fetch(`${API}/api/jobs/${job.job_id}/review`)
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Review queue unavailable.")))
+      .then((value: ReviewResponse) => {
+        setReview(value);
+        const first = value.items.find((item) => item.review_status === "needs_review");
+        if (first) openReview(first);
+      })
+      .catch(() => setReview(null));
   }, [job?.job_id, job?.status]);
 
   useEffect(() => {
@@ -112,6 +130,47 @@ function App() {
     setEvents((current) => [...current, "Cancellation requested"]);
   }
 
+  function openReview(item: ReviewItem) {
+    setSelectedReviewId(item.question_id);
+    setReviewDraft({
+      prompt: item.prompt,
+      answer: item.answer || "",
+      explanation: item.explanation || "",
+      options: item.options.map((option) => `${option.label}. ${option.text}`).join("\n"),
+      review_note: item.review_note || "",
+    });
+  }
+
+  async function saveReview(status: "approved" | "edited" | "rejected") {
+    if (!job || !selectedReviewId) return;
+    setReviewBusy(true);
+    const options = reviewDraft.options.split("\n").map((line) => line.trim()).filter(Boolean).map((line, index) => {
+      const match = line.match(/^([A-Ha-h]|[1-9])[.)\-:]?\s+(.+)$/);
+      return { label: match?.[1]?.toUpperCase() || String(index + 1), text: match?.[2] || line };
+    });
+    try {
+      const response = await fetch(`${API}/api/jobs/${job.job_id}/review/${selectedReviewId}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...reviewDraft, options, status }),
+      });
+      const updated: ReviewItem = await response.json();
+      if (!response.ok) throw new Error((updated as unknown as { detail?: string }).detail || "Could not save review.");
+      const nextItem = review?.items.find((item) => item.question_id !== updated.question_id && item.review_status === "needs_review");
+      setReview((current) => current && { ...current, items: current.items.map((item) => item.question_id === updated.question_id ? updated : item) });
+      setData((current) => current && { ...current, questions: current.questions?.map((item) => item.question_id === updated.question_id ? updated : item) });
+      if (nextItem) openReview(nextItem);
+      else setSelectedReviewId(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not save review.");
+    } finally { setReviewBusy(false); }
+  }
+
+  async function completeReview() {
+    if (!job) return;
+    const response = await fetch(`${API}/api/jobs/${job.job_id}/review/complete`, { method: "POST" });
+    if (response.ok) setReview(await response.json());
+  }
+
   const visibleStages = useMemo(
     () => stages.map((name) => ({ name, status: job?.stages?.[name]?.status || "pending" })),
     [job],
@@ -137,6 +196,7 @@ function App() {
       <div className="panel philosophy-panel"><span className="section-number">WHY THIS WORKS</span><h2>Evidence before inference.</h2><p>Every answer is assembled from three channels, so you can see what was heard, what was read, and what was interpreted.</p><div className="channel"><span className="channel-icon audio">◒</span><div><b>Speech</b><small>Captions or local Whisper with timestamps</small></div></div><div className="channel"><span className="channel-icon visual">▧</span><div><b>Visuals</b><small>Keyframes, OCR, diagrams, and tables</small></div></div><div className="channel"><span className="channel-icon trace">⌁</span><div><b>Traceability</b><small>Evidence links and confidence on every claim</small></div></div></div>
     </section>
     {(job || error) && <section className="results-area"><div className="panel pipeline-panel"><div className="panel-heading"><div><span className="section-number">02</span><h2>Pipeline live view</h2></div>{job && <span className={`job-state ${job.status}`}>{job.status}</span>}</div><div className="stage-list">{visibleStages.map((stage, index) => <div className={`stage ${stage.status}`} key={stage.name}><span className="stage-index">{stage.status === "completed" ? "✓" : String(index + 1).padStart(2, "0")}</span><div><b>{stage.name.replace("_", " ")}</b><small>{stage.status}</small></div><span className="stage-line" /></div>)}</div>{job && !["completed", "failed", "cancelled"].includes(job.status) && <button className="quiet-button" onClick={cancel}>Cancel job</button>}{error && <div className="error-box"><b>Could not start extraction</b><span>{error}</span></div>}{job?.warnings?.map((warning) => <div className="warning" key={warning}>⚠ {warning}</div>)}<div className="event-log">{events.slice(-4).map((event) => <span key={event}>› {event}</span>)}</div></div>{job?.status === "completed" && <div className="panel study-panel"><div className="panel-heading"><div><span className="section-number">03</span><h2>Study output</h2></div><span className="status-dot">READY</span></div><div className="metric-row"><div><strong>{questionCount}</strong><span>questions</span></div><div><strong>{transcriptCount}</strong><span>{data?.transcript?.language || "speech"} segments</span></div><div><strong>{data?.ocr?.length || 0}</strong><span>visual frames</span></div></div><div className="question-preview">{data?.questions?.slice(0, 3).map((question, index) => <article key={`${question.prompt}-${index}`}><span className="question-number">Q{String(index + 1).padStart(2, "0")}</span><h3>{question.prompt}</h3>{question.answer && <p className="answer-line"><b>Answer {question.answer}</b>{question.explanation && ` · ${question.explanation}`}</p>}</article>)}{!questionCount && <p className="empty-state">The extraction completed without detecting a structured question. Review the transcript and visual evidence.</p>}</div><div className="downloads"><a href={`${API}/api/jobs/${job.job_id}/artifacts/extraction.md`} target="_blank" rel="noreferrer">Markdown ↗</a><a href={`${API}/api/jobs/${job.job_id}/artifacts/extraction.json`} target="_blank" rel="noreferrer">JSON ↗</a>{hasArtifact("extraction.docx") && <a href={`${API}/api/jobs/${job.job_id}/artifacts/extraction.docx`} target="_blank" rel="noreferrer">Word ↗</a>}{hasArtifact("transcript.md") && <a href={`${API}/api/jobs/${job.job_id}/artifacts/transcript.md`} target="_blank" rel="noreferrer">Transcript ↗</a>}</div></div>}</section>}
+    {job?.status === "completed" && review && <section className="review-area"><div className="panel review-panel"><div className="panel-heading"><div><span className="section-number">04</span><h2>Human review</h2></div><span className={`job-state ${review.summary.needs_review ? "failed" : "completed"}`}>{review.summary.needs_review} need review</span></div><p className="review-intro">Review low-confidence questions against their transcript and visual evidence before using them for study.</p><div className="review-layout"><div className="review-queue">{review.items.filter((item) => item.review_status === "needs_review").map((item) => <button className={`review-queue-item ${selectedReviewId === item.question_id ? "active" : ""}`} key={item.question_id} onClick={() => openReview(item)}><span>{item.question_id}</span><strong>{item.prompt}</strong><small>{Math.round((item.confidence || 0) * 100)}% confidence</small></button>)}{!review.summary.needs_review && <p className="empty-state">No low-confidence questions are waiting for review.</p>}</div>{selectedReviewId && <div className="review-editor"><div className="review-confidence">Confidence: {Math.round(((review.items.find((item) => item.question_id === selectedReviewId)?.confidence || 0) * 100))}%</div><label>QUESTION<textarea value={reviewDraft.prompt} onChange={(event) => setReviewDraft({ ...reviewDraft, prompt: event.target.value })} /></label><label>OPTIONS<textarea value={reviewDraft.options} onChange={(event) => setReviewDraft({ ...reviewDraft, options: event.target.value })} /></label><label>ANSWER<input value={reviewDraft.answer} onChange={(event) => setReviewDraft({ ...reviewDraft, answer: event.target.value })} /></label><label>EXPLANATION<textarea value={reviewDraft.explanation} onChange={(event) => setReviewDraft({ ...reviewDraft, explanation: event.target.value })} /></label><label>REVIEW NOTE<textarea value={reviewDraft.review_note} onChange={(event) => setReviewDraft({ ...reviewDraft, review_note: event.target.value })} placeholder="Why was this approved or edited?" /></label><div className="review-actions"><button className="quiet-button" disabled={reviewBusy} onClick={() => saveReview("rejected")}>Reject</button><button className="quiet-button" disabled={reviewBusy} onClick={() => saveReview("edited")}>Save edit</button><button className="primary-button" disabled={reviewBusy} onClick={() => saveReview("approved")}>Approve <span>✓</span></button></div></div>}</div><button className="quiet-button review-complete" onClick={completeReview}>Mark review complete</button></div></section>}
     <footer><span>EXAM EXTRACTOR <b>0.1</b></span><span>OPEN SOURCE · LOCAL-FIRST · PROVIDER-ELASTIC</span></footer>
   </main>;
 }
