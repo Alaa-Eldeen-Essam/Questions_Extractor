@@ -39,6 +39,7 @@ from .services.question_service import extract_questions
 from .services.pdf_service import extract_pdf_pages
 from .services.source_service import acquire_source, detect_source, load_acquired
 from .services.profiles import resolved_config
+from .services.review_service import review_item, review_summary
 
 
 @dataclass
@@ -69,8 +70,10 @@ def _job_id(source: str, config: PipelineConfig) -> str:
             "speech": config.speech.__dict__,
             "frames": config.frames.__dict__,
             "ocr": config.ocr.__dict__,
+            "llm": config.llm.__dict__,
             "privacy": config.privacy.__dict__,
             "output": config.output.__dict__,
+            "review": config.review.__dict__,
         },
         sort_keys=True,
         default=str,
@@ -181,8 +184,10 @@ def _load_questions(path: Path) -> list[QuestionRecord]:
                 for ref in item.get("evidence", [])
             ],
             warnings=item.get("warnings", []),
-            confidence=item.get("confidence"),
-        )
+                confidence=item.get("confidence"),
+                review_status=item.get("review_status", "pending"),
+                review_note=item.get("review_note"),
+            )
         for item in data
     ]
 
@@ -378,6 +383,11 @@ def run_pipeline(
                 manifest.setdefault("warnings", []).append(error.message)
                 questions = []
             write_json(workspace / "questions.json", questions)
+            manifest["review"] = review_summary(questions, config.review.threshold)
+            write_json(
+                workspace / "review.json",
+                manifest["review"] | {"items": [review_item(question) for question in questions]},
+            )
             complete(StageName.QUESTIONS, questions)
 
         if not should_skip(StageName.RENDER):

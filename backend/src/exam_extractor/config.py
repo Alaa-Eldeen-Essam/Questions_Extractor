@@ -72,6 +72,14 @@ class PrivacyConfig:
 
 
 @dataclass
+class ReviewConfig:
+    """Controls automatic review flags for extracted questions."""
+
+    enabled: bool = True
+    threshold: float = 0.70
+
+
+@dataclass
 class PipelineConfig:
     profile: str = "balanced"
     output_dir: Path = Path("outputs")
@@ -81,6 +89,7 @@ class PipelineConfig:
     llm: LLMConfig = field(default_factory=LLMConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
+    review: ReviewConfig = field(default_factory=ReviewConfig)
 
     @classmethod
     def from_toml(cls, path: Path) -> "PipelineConfig":
@@ -100,6 +109,7 @@ class PipelineConfig:
             ("llm", config.llm),
             ("output", config.output),
             ("privacy", config.privacy),
+            ("review", config.review),
         ):
             for key, value in data.get(section_name, {}).items():
                 if not hasattr(target, key):
@@ -124,6 +134,8 @@ class PipelineConfig:
             raise ValueError("speech.timeout_seconds must be positive")
         if not 0 <= self.ocr.confidence_threshold <= 1:
             raise ValueError("ocr.confidence_threshold must be between 0 and 1")
+        if not 0 <= self.review.threshold <= 1:
+            raise ValueError("review.threshold must be between 0 and 1")
         if not 0 <= self.llm.temperature <= 2:
             raise ValueError("llm.temperature must be between 0 and 2")
         if self.llm.max_tokens <= 0:

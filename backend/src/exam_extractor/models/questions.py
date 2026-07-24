@@ -47,3 +47,5 @@ class QuestionRecord:
     evidence: list[EvidenceRef] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     confidence: float | None = None
+    review_status: str = "pending"
+    review_note: str | None = None

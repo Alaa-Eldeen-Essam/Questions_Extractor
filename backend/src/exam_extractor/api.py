@@ -14,9 +14,12 @@ from typing import Any
 
 from .config import PipelineConfig
 from .errors import ErrorCode, ExtractorError
-from .pipeline import _job_id, run_pipeline
+from .pipeline import _job_id, _load_questions, run_pipeline
 from .services.llm_service import available_llm_providers, llm_provider_catalog
 from .services.profiles import apply_profile, profile_catalog
+from .services.review_service import review_item, review_summary, update_question
+from .services.output_service import write_json
+from .services.serialization import jsonable
 
 try:
     from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -33,6 +36,17 @@ class JobRequest(BaseModel):
     source: str = Field(min_length=1, max_length=4096)
     profile: str = "balanced"
     options: dict[str, Any] = Field(default_factory=dict)
+
+
+class ReviewUpdate(BaseModel):
+    """Editable fields accepted by the human-review endpoint."""
+
+    status: str | None = None
+    prompt: str | None = None
+    options: list[dict[str, str]] | None = None
+    answer: str | None = None
+    explanation: str | None = None
+    review_note: str | None = None
 
 
 class JobManager:
@@ -96,6 +110,55 @@ class JobManager:
         if not candidate.is_file():
             raise HTTPException(status_code=404, detail="Artifact not found.")
         return candidate
+
+    def review(self, job_id: str) -> dict[str, Any]:
+        """Load the current review queue for a completed job."""
+        questions_path = self.output_root / job_id / "questions.json"
+        if not questions_path.is_file():
+            raise FileNotFoundError(f"No question artifact exists for job '{job_id}'.")
+        questions = _load_questions(questions_path)
+        config = self.output_root / job_id / "manifest.json"
+        manifest = json.loads(config.read_text(encoding="utf-8")) if config.is_file() else {}
+        threshold = float(manifest.get("review", {}).get("threshold", 0.70))
+        return {
+            "summary": review_summary(questions, threshold),
+            "items": [review_item(question) for question in questions],
+        }
+
+    def update_review(self, job_id: str, question_id: str, changes: dict[str, Any]) -> dict[str, Any]:
+        """Persist one human review decision and synchronize JSON artifacts."""
+        questions_path = self.output_root / job_id / "questions.json"
+        if not questions_path.is_file():
+            raise FileNotFoundError(f"No question artifact exists for job '{job_id}'.")
+        questions = _load_questions(questions_path)
+        question = next((item for item in questions if item.question_id == question_id), None)
+        if question is None:
+            raise KeyError(f"Question '{question_id}' was not found.")
+        update_question(question, changes)
+        write_json(questions_path, questions)
+        manifest_path = self.output_root / job_id / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else {}
+        threshold = float(manifest.get("review", {}).get("threshold", 0.70))
+        summary = review_summary(questions, threshold)
+        review_payload = {"summary": summary, "items": [review_item(item) for item in questions]}
+        write_json(self.output_root / job_id / "review.json", review_payload)
+        manifest["review"] = summary
+        if manifest_path.is_file():
+            write_json(manifest_path, manifest)
+        extraction_path = self.output_root / job_id / "extraction.json"
+        if extraction_path.is_file():
+            extraction = json.loads(extraction_path.read_text(encoding="utf-8"))
+            extraction["questions"] = jsonable(questions)
+            extraction["review"] = summary
+            write_json(extraction_path, extraction)
+        return review_item(question)
+
+    def complete_review(self, job_id: str) -> dict[str, Any]:
+        """Record that the reviewer finished the current queue."""
+        payload = self.review(job_id)
+        payload["completed_by_human"] = True
+        write_json(self.output_root / job_id / "review.json", payload)
+        return payload
 
 
 def _apply_options(config: PipelineConfig, options: dict[str, Any]) -> PipelineConfig:
@@ -196,6 +259,29 @@ def create_app(output_root: Path | None = None) -> FastAPI:
     @app.get("/api/jobs/{job_id}")
     def get_job(job_id: str) -> dict[str, Any]:
         return manager.status(job_id)
+
+    @app.get("/api/jobs/{job_id}/review")
+    def get_review(job_id: str) -> dict[str, Any]:
+        try:
+            return manager.review(job_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.patch("/api/jobs/{job_id}/review/{question_id}")
+    def update_review(job_id: str, question_id: str, payload: ReviewUpdate) -> dict[str, Any]:
+        try:
+            return manager.update_review(job_id, question_id, payload.model_dump(exclude_none=True))
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/jobs/{job_id}/review/complete")
+    def complete_review(job_id: str) -> dict[str, Any]:
+        try:
+            return manager.complete_review(job_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.post("/api/jobs/{job_id}/cancel")
     def cancel_job(job_id: str) -> dict[str, Any]:

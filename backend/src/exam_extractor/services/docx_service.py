@@ -160,6 +160,7 @@ def write_docx(
                 body.append(_paragraph(f"Answer: {question.answer}", bold=True))
             if question.explanation:
                 body.append(_paragraph(f"Explanation: {question.explanation}"))
+            body.append(_paragraph(f"Review status: {question.review_status}"))
             body.extend(_paragraph(f"Warning: {warning}") for warning in question.warnings)
     else:
         body.append(_paragraph("No question records were detected."))

@@ -10,6 +10,7 @@ from ..models.sources import SourceMetadata
 from ..models.transcripts import Transcript
 from .serialization import jsonable
 from .docx_service import write_docx
+from .review_service import review_item, review_summary
 
 
 def write_json(path: Path, value: object) -> None:
@@ -44,12 +45,22 @@ def write_outputs(
         "frames": frames,
         "ocr": ocr,
         "questions": questions,
+        "review": review_summary(questions, config.review.threshold),
         "warnings": warnings,
     }
     if config.output.json:
         path = target / "extraction.json"
         write_json(path, payload)
         outputs.append(path)
+    review_path = target / "review.json"
+    write_json(
+        review_path,
+        {
+            "summary": review_summary(questions, config.review.threshold),
+            "items": [review_item(question) for question in questions],
+        },
+    )
+    outputs.append(review_path)
     if config.output.markdown:
         path = target / "extraction.md"
         lines = [
@@ -84,6 +95,7 @@ def write_outputs(
                     lines += ["", f"**Explanation:** {question.explanation}"]
                 if question.warnings:
                     lines += ["", *[f"> Warning: {warning}" for warning in question.warnings]]
+                lines += [f"**Review status:** {question.review_status}"]
                 lines.append("")
         else:
             lines.append("No question records were detected.")

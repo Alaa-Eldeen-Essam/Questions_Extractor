@@ -7,6 +7,7 @@ from typing import Any
 from ..config import PipelineConfig
 from ..models import AnswerOption, EvidenceKind, EvidenceRef, OCRResult, QuestionRecord, Transcript
 from .llm_service import generate
+from .review_service import mark_for_review
 
 
 QUESTION = re.compile(r"\b(?:what|which|who|where|when|why|how|select|choose|identify|according to)\b[^?\n]{5,}\?", re.I)
@@ -45,7 +46,7 @@ def extract_questions(transcript: Transcript, ocr: list[OCRResult], config: Pipe
     records = _deduplicate(records)
     if config.llm.enabled and (not records or any((item.confidence or 0) < 0.7 for item in records)):
         _enrich_with_llm(records, transcript, ocr, config)
-    return records
+    return mark_for_review(records, config.review)
 
 
 def _clean(value: str) -> str:
