@@ -1,4 +1,4 @@
-# Docker Hub release plan
+# Docker Hub release
 
 ## Image strategy
 
@@ -13,22 +13,18 @@ or a separately tagged image only if the dependency size becomes a real issue.
 
 `latest` is for convenience. Version tags are the reproducible choice.
 
-## Image requirements
+## Image contents
 
-- Multi-stage build.
-- Non-root runtime user.
-- No API keys baked into image layers.
-- Healthcheck using the API readiness endpoint.
-- Stable `/data` volume for jobs, models, outputs, and cache.
-- Environment-variable configuration.
-- Explicit image labels for version and commit.
-- No downloaded user media in the image.
+- `Dockerfile` is a multi-stage CPU-first build.
+- The runtime user is non-root.
+- FastAPI serves both the API and the compiled frontend.
+- FFmpeg, Tesseract, and Poppler are installed in the runtime.
+- `/data/outputs` and `/data/models` are persistent volumes.
+- API keys are supplied at runtime, never baked into image layers.
 
-## Compose requirements
+## Compose
 
-The first public compose file should run one container containing the backend
-and built frontend. Split frontend/backend containers only if deployment needs
-it; a single image keeps self-hosting simple.
+The compose file runs one container containing the backend and built frontend.
 
 ```yaml
 services:
@@ -45,16 +41,13 @@ services:
 
 ## GitHub Actions release
 
-The release workflow should:
+`.github/workflows/docker-publish.yml`:
 
-1. Run Python tests and frontend tests.
-2. Build the frontend.
-3. Build the Docker image.
-4. Run a container smoke test.
-5. Scan the image.
-6. Generate an SBOM.
-7. Push immutable commit and version tags to Docker Hub.
-8. Publish GitHub release notes.
+1. Logs into Docker Hub using `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.
+2. Builds the multi-stage image.
+3. Publishes version, minor, `latest`, and SHA tags.
+
+The CI workflow separately runs backend tests and the frontend build.
 
 Docker Hub credentials must be stored as GitHub Actions secrets. The workflow
 must never print them.

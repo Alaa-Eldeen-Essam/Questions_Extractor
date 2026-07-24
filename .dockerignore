@@ -1,0 +1,14 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+outputs
+jobs
+inspection
+frontend/node_modules
+frontend/dist
+*.mp4
+*.mkv
+*.webm
+*.wav

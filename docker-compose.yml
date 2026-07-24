@@ -1,0 +1,21 @@
+services:
+  exam-extractor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${EXTRACTOR_IMAGE:-exam-video-extractor:local}
+    ports:
+      - "${EXTRACTOR_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      EXTRACTOR_OUTPUT_DIR: /data/outputs
+      FRONTEND_DIST: /app/frontend-dist
+    volumes:
+      - extractor_outputs:/data/outputs
+      - extractor_models:/data/models
+    restart: unless-stopped
+
+volumes:
+  extractor_outputs:
+  extractor_models:

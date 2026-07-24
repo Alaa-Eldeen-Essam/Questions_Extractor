@@ -18,6 +18,7 @@ from .services.llm_service import available_llm_providers
 try:
     from fastapi import FastAPI, File, HTTPException, UploadFile
     from fastapi.responses import FileResponse, StreamingResponse
+    from fastapi.staticfiles import StaticFiles
     from pydantic import BaseModel, Field
 except ImportError as exc:  # pragma: no cover
     raise RuntimeError("Install the web extra: python -m pip install -e 'backend[web]'") from exc
@@ -183,6 +184,9 @@ def create_app(output_root: Path | None = None) -> FastAPI:
                 await asyncio.sleep(0.25)
         return StreamingResponse(stream(), media_type="text/event-stream")
 
+    frontend_dist = Path(os.getenv("FRONTEND_DIST", "frontend/dist"))
+    if frontend_dist.is_dir():
+        app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
     return app
 
 

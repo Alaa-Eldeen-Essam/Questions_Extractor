@@ -1,7 +1,6 @@
 # Self-hosting guide
 
-This is the target installation guide for the public release. It will be kept
-in sync with the actual commands as Phases 1, 5, 6, and 7 are implemented.
+This guide describes the current Docker and source installation paths.
 
 ## Option A — Docker Hub installation
 
@@ -17,7 +16,7 @@ Create a working directory:
 ```bash
 mkdir exam-video-extractor
 cd exam-video-extractor
-mkdir -p data/jobs data/models data/outputs
+mkdir -p data/models data/outputs
 ```
 
 Create `.env`:
@@ -63,6 +62,7 @@ Prerequisites:
 - Python 3.11 or newer.
 - FFmpeg available on `PATH`.
 - Tesseract available on `PATH`.
+- Poppler available on `PATH` for document work.
 - Git.
 - Node.js 20 or newer for the frontend.
 
@@ -91,7 +91,7 @@ source .venv/bin/activate
 Install the backend:
 
 ```bash
-python -m pip install -e backend
+python -m pip install -e "backend[web]"
 ```
 
 Install the frontend:
