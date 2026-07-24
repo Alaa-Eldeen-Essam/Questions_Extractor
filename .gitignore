@@ -33,3 +33,4 @@ inspection/
 node_modules/
 frontend/dist/
 frontend/.vite/
+*.tsbuildinfo

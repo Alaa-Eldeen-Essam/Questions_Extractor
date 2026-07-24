@@ -26,8 +26,8 @@ later phases.
 | 2 | Speech-provider implementations | Complete |
 | 3 | LLM-provider implementations | Complete |
 | 4 | Question/answer intelligence | Complete |
-| 5 | FastAPI backend | In progress |
-| 6 | React/Vite frontend | Planned |
+| 5 | FastAPI backend | Complete |
+| 6 | React/Vite frontend | In progress |
 | 7 | Release documentation and packaging | Planned |
 | 8 | Optional release hardening | Planned |
 

@@ -169,7 +169,7 @@ Expose the same pipeline through a stable local API.
 
 The CLI and API produce equivalent results from the same pipeline code.
 
-## Phase 6 — portfolio-quality frontend
+## Phase 6 — portfolio-quality frontend (in progress)
 
 ### Goal
 
