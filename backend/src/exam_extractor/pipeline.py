@@ -193,6 +193,13 @@ def _caption_language(path: Path) -> str:
     return parts[-1] if len(parts) > 1 and parts[-1] else "en"
 
 
+def _caption_matches(path: Path, language: str | None) -> bool:
+    """Return whether a caption file matches the requested input language."""
+    if not language or language.lower() == "auto":
+        return True
+    return _caption_language(path).lower().startswith(language.lower())
+
+
 def _read_manifest(path: Path, source: SourceRef) -> dict[str, Any]:
     if path.exists():
         return json.loads(path.read_text(encoding="utf-8"))
@@ -299,6 +306,8 @@ def run_pipeline(
                 warnings.append(str(metadata.extra["caption_warning"]))
             segments: list[TranscriptSegment] = []
             for caption_path in acquired.caption_paths:
+                if not _caption_matches(caption_path, config.speech.language):
+                    continue
                 segments.extend(
                     parse_caption_file(caption_path, language=_caption_language(caption_path)).segments
                 )

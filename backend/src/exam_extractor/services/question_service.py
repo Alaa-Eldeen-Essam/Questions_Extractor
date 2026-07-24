@@ -92,8 +92,15 @@ def _enrich_with_llm(records: list[QuestionRecord], transcript: Transcript, ocr:
         "type": "array",
         "items": {"type": "object", "properties": {"prompt": {"type": "string"}, "options": {"type": "array"}, "answer": {"type": ["string", "null"]}, "explanation": {"type": ["string", "null"]}}, "required": ["prompt"]},
     }
+    output_language = config.llm.output_language
+    language_instruction = (
+        "Write the result in the same language as the evidence."
+        if output_language.lower() == "same"
+        else f"Write the result in {output_language}. Translate only when necessary and do not invent missing answers."
+    )
     result = generate(
-        "Extract exam questions, options, answers, and explanations from this evidence. Do not invent missing answers. Return JSON.\n\n" + context,
+        "Extract exam questions, options, answers, and explanations from this evidence. "
+        f"{language_instruction} Do not invent missing answers. Return JSON.\n\n" + context,
         config.llm,
         images=[item.frame.path for item in ocr if item.confidence is None or item.confidence < config.ocr.confidence_threshold][:4],
         schema=schema,

@@ -11,7 +11,7 @@ from exam_extractor.models import FrameEvidence, OCRResult, SourceKind, SourceMe
 from exam_extractor.models.questions import AnswerOption, QuestionRecord
 from exam_extractor.services.docx_service import write_docx
 from exam_extractor.services.pdf_service import extract_pdf_pages
-from exam_extractor.services.source_service import _fetch_transcript_fallback, _is_caption_download_error, _youtube_video_id, acquire_source, detect_source
+from exam_extractor.services.source_service import _fetch_transcript_fallback, _is_caption_download_error, _youtube_options, _youtube_video_id, acquire_source, detect_source
 
 
 class Phase8Tests(unittest.TestCase):
@@ -43,6 +43,12 @@ class Phase8Tests(unittest.TestCase):
         self.assertTrue(_is_caption_download_error(RuntimeError("HTTP 429 subtitles")))
         self.assertFalse(_is_caption_download_error(RuntimeError("video unavailable")))
         self.assertEqual(_youtube_video_id("https://www.youtube.com/watch?v=abc123&list=playlist"), "abc123")
+
+    def test_youtube_caption_language_can_be_selected(self) -> None:
+        config = PipelineConfig()
+        config.speech.language = "ar"
+        options = _youtube_options(Path("outputs"), config, captions=True)
+        self.assertEqual(options["subtitleslangs"], ["ar", "ar.*"])
 
     def test_transcript_fallback_writes_webvtt(self) -> None:
         class FakeApi:

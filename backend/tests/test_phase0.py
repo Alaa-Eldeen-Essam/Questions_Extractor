@@ -21,6 +21,8 @@ class Phase0Tests(unittest.TestCase):
         config.validate()
         self.assertEqual(config.ocr.provider, "tesseract")
         self.assertFalse(config.llm.enabled)
+        self.assertIsNone(config.speech.language)
+        self.assertEqual(config.llm.output_language, "same")
 
     def test_toml_config_overrides_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

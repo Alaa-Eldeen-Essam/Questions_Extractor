@@ -133,11 +133,17 @@ def _youtube_options(target: Path, config: PipelineConfig, *, captions: bool) ->
         "noprogress": True,
     }
     if captions:
+        language = config.speech.language
+        subtitle_languages = (
+            [language, f"{language}.*"]
+            if language and language.lower() != "auto"
+            else ["en", "en.*", "ar", "ar.*"]
+        )
         options.update(
             {
                 "writesubtitles": True,
                 "writeautomaticsub": True,
-                "subtitleslangs": ["en", "en.*"],
+                "subtitleslangs": subtitle_languages,
                 "subtitlesformat": "vtt",
             }
         )
@@ -172,7 +178,11 @@ def _caption_language(path: Path) -> str:
     return parts[-1] if len(parts) > 1 and parts[-1] else "en"
 
 
-def _fetch_transcript_fallback(source: str, target: Path) -> tuple[Path, str] | None:
+def _fetch_transcript_fallback(
+    source: str,
+    target: Path,
+    preferred_language: str | None = None,
+) -> tuple[Path, str] | None:
     """Fetch a visible YouTube transcript when yt-dlp captions are rate-limited.
 
     English is preferred, but a video may expose only another transcript language
@@ -186,9 +196,10 @@ def _fetch_transcript_fallback(source: str, target: Path) -> tuple[Path, str] | 
         from youtube_transcript_api import YouTubeTranscriptApi
 
         api = YouTubeTranscriptApi()
-        language = "en"
+        preferred = preferred_language if preferred_language and preferred_language.lower() != "auto" else "en"
+        language = preferred
         try:
-            fetched = api.fetch(video_id, languages=["en"])
+            fetched = api.fetch(video_id, languages=[preferred])
         except Exception:
             transcript_list = api.list(video_id)
             try:
@@ -201,11 +212,15 @@ def _fetch_transcript_fallback(source: str, target: Path) -> tuple[Path, str] | 
                 for attribute in ("generated_transcripts", "_generated_transcripts"):
                     values = getattr(transcript_list, attribute, {})
                     candidates.extend(values.values() if isinstance(values, dict) else values)
+            preferred_codes = [preferred.lower()]
+            if preferred.lower() != "en":
+                preferred_codes.append("en")
             selected = next(
                 (
                     item
+                    for wanted in preferred_codes
                     for item in candidates
-                    if str(getattr(item, "language_code", "")).lower().startswith("en")
+                    if str(getattr(item, "language_code", "")).lower().startswith(wanted)
                 ),
                 next(iter(candidates), None),
             )
@@ -275,7 +290,7 @@ def _acquire_youtube(source: SourceRef, target: Path, config: PipelineConfig) ->
                 retryable=True,
                 suggestion="Check the URL, network access, video availability, and FFmpeg installation.",
             ) from exc
-        fallback_caption = _fetch_transcript_fallback(source.value, target)
+        fallback_caption = _fetch_transcript_fallback(source.value, target, config.speech.language)
         if fallback_caption:
             caption_warning = (
                 "yt-dlp captions were rate-limited; an automatic YouTube transcript "

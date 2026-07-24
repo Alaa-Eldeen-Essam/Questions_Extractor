@@ -11,7 +11,7 @@ from typing import Any
 class SpeechConfig:
     provider: str = "auto"
     model: str = "base.en"
-    language: str | None = "en"
+    language: str | None = None
     device: str = "auto"
     compute_type: str = "auto"
     translate: bool = False
@@ -51,6 +51,7 @@ class LLMConfig:
     timeout_seconds: float = 120.0
     retry_count: int = 1
     vision_enabled: bool = True
+    output_language: str = "same"
 
 
 @dataclass
@@ -111,6 +112,8 @@ class PipelineConfig:
         """Validate cross-platform configuration values."""
         if not self.profile:
             raise ValueError("profile cannot be empty")
+        if self.speech.language and self.speech.language.lower() == "auto":
+            self.speech.language = None
         if not 0 <= self.frames.scene_threshold <= 1:
             raise ValueError("frames.scene_threshold must be between 0 and 1")
         if self.frames.fallback_interval_seconds <= 0:
@@ -129,6 +132,10 @@ class PipelineConfig:
             raise ValueError("llm.timeout_seconds must be positive")
         if self.llm.retry_count < 0:
             raise ValueError("llm.retry_count cannot be negative")
+        if self.speech.language is not None and not self.speech.language.strip():
+            raise ValueError("speech.language must be a language code or null for auto detection")
+        if not self.llm.output_language.strip():
+            raise ValueError("llm.output_language cannot be empty")
         if self.privacy.retention_days is not None and self.privacy.retention_days <= 0:
             raise ValueError("privacy.retention_days must be positive when set")
         if self.llm.enabled and self.llm.provider == "none":
