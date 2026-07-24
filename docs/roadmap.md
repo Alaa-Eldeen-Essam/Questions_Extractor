@@ -37,7 +37,7 @@ requiring an LLM or API key.
 
 The CLI can create a useful raw extraction package without any cloud account.
 
-## Phase 2 — speech providers
+## Phase 2 — speech providers (complete)
 
 ### Goal
 

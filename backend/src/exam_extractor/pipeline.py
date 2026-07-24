@@ -23,12 +23,14 @@ from .models import (
     StageStatus,
     Transcript,
     TranscriptSegment,
+    TranscriptWord,
 )
 from .services.captions import parse_caption_file
 from .services.media_service import extract_audio, extract_frames
 from .services.ocr_service import extract_ocr
 from .services.output_service import write_json, write_outputs
 from .services.serialization import jsonable
+from .services.speech_service import transcribe_audio
 from .services.source_service import acquire_source, detect_source, load_acquired
 
 
@@ -57,6 +59,7 @@ def _job_id(source: str, config: PipelineConfig) -> str:
         {
             "source": source,
             "profile": config.profile,
+            "speech": config.speech.__dict__,
             "frames": config.frames.__dict__,
             "ocr": config.ocr.__dict__,
             "output": config.output.__dict__,
@@ -87,7 +90,15 @@ def _load_metadata(path: Path) -> SourceMetadata:
 def _load_transcript(path: Path) -> Transcript:
     data = json.loads(path.read_text(encoding="utf-8"))
     return Transcript(
-        segments=[TranscriptSegment(**item) for item in data.get("segments", [])],
+        segments=[
+            TranscriptSegment(
+                **{
+                    **item,
+                    "words": tuple(TranscriptWord(**word) for word in item.get("words", [])),
+                }
+            )
+            for item in data.get("segments", [])
+        ],
         language=data.get("language"),
         source=data.get("source", "unknown"),
     )
@@ -228,15 +239,28 @@ def run_pipeline(
             for caption_path in acquired.caption_paths:
                 segments.extend(parse_caption_file(caption_path, language="en").segments)
             segments.sort(key=lambda item: item.start_seconds)
-            transcript = Transcript(segments=segments, language="en" if segments else None, source="captions" if segments else "none")
-            if acquired.media_path:
+            audio_path = acquired.audio_path
+            if not audio_path and acquired.media_path:
                 try:
-                    audio = extract_audio(acquired.media_path, workspace / "audio")
-                    manifest["audio_path"] = str(audio)
+                    audio_path = extract_audio(acquired.media_path, workspace / "audio")
                 except ExtractorError as error:
                     warnings.append(error.message)
-            if not segments:
-                warnings.append("No captions were available; audio was extracted for a future speech provider.")
+            if audio_path:
+                manifest["audio_path"] = str(audio_path)
+            if not segments and audio_path:
+                try:
+                    transcript = transcribe_audio(audio_path, config.speech)
+                except ExtractorError as error:
+                    warnings.append(error.message)
+                    transcript = Transcript([], None, "none")
+            else:
+                transcript = Transcript(
+                    segments=segments,
+                    language="en" if segments else None,
+                    source="captions" if segments else "none",
+                )
+            if not segments and not transcript.segments:
+                warnings.append("No captions or speech transcript were available.")
             manifest["warnings"] = warnings
             write_json(workspace / "transcript.json", transcript)
             complete(StageName.SPEECH, transcript)

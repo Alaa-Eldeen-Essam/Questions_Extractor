@@ -13,6 +13,13 @@ class SpeechConfig:
     model: str = "base.en"
     language: str | None = "en"
     device: str = "auto"
+    compute_type: str = "auto"
+    translate: bool = False
+    beam_size: int = 5
+    vad_filter: bool = True
+    remote_base_url: str | None = None
+    remote_api_key_env: str | None = None
+    timeout_seconds: float = 120.0
 
 
 @dataclass
@@ -90,6 +97,10 @@ class PipelineConfig:
             raise ValueError("frames.scene_threshold must be between 0 and 1")
         if self.frames.fallback_interval_seconds <= 0:
             raise ValueError("frames.fallback_interval_seconds must be positive")
+        if self.speech.beam_size <= 0:
+            raise ValueError("speech.beam_size must be positive")
+        if self.speech.timeout_seconds <= 0:
+            raise ValueError("speech.timeout_seconds must be positive")
         if not 0 <= self.ocr.confidence_threshold <= 1:
             raise ValueError("ocr.confidence_threshold must be between 0 and 1")
         if not 0 <= self.llm.temperature <= 2:

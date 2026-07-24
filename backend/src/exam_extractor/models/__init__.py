@@ -5,7 +5,7 @@ from .frames import FrameEvidence, OCRResult
 from .jobs import Job, JobStatus, StageName, StageResult, StageStatus
 from .questions import AnswerOption, EvidenceRef, QuestionRecord
 from .sources import AcquiredSource, SourceKind, SourceMetadata, SourceRef
-from .transcripts import Transcript, TranscriptSegment
+from .transcripts import Transcript, TranscriptSegment, TranscriptWord
 
 __all__ = [
     "AcquiredSource",
@@ -26,4 +26,5 @@ __all__ = [
     "StageStatus",
     "Transcript",
     "TranscriptSegment",
+    "TranscriptWord",
 ]

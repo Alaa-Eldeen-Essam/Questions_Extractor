@@ -6,6 +6,13 @@ provider = "auto"
 model = "base.en"
 language = "en"
 device = "auto"
+compute_type = "auto"
+translate = false
+beam_size = 5
+vad_filter = true
+timeout_seconds = 120.0
+# remote_base_url = "http://localhost:8000/v1"
+# remote_api_key_env = "OPENAI_API_KEY"
 
 [frames]
 method = "scene_change"
