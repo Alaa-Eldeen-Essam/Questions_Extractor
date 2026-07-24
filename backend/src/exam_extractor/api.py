@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import mimetypes
 import os
 import threading
 import uuid
@@ -119,7 +120,7 @@ def create_app(output_root: Path | None = None) -> FastAPI:
         yield
         manager.executor.shutdown(wait=True, cancel_futures=True)
 
-    app = FastAPI(title="Exam Video Extractor API", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Exam Video Extractor API", version="0.1.1", lifespan=lifespan)
     app.state.job_manager = manager
 
     @app.get("/health/live")
@@ -182,7 +183,11 @@ def create_app(output_root: Path | None = None) -> FastAPI:
 
     @app.get("/api/jobs/{job_id}/artifacts/{relative:path}")
     def get_artifact(job_id: str, relative: str) -> FileResponse:
-        return FileResponse(manager.artifact(job_id, relative))
+        artifact = manager.artifact(job_id, relative)
+        media_type = {
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }.get(artifact.suffix.lower(), mimetypes.guess_type(artifact.name)[0] or "application/octet-stream")
+        return FileResponse(artifact, media_type=media_type, filename=artifact.name)
 
     @app.get("/api/jobs/{job_id}/events")
     async def events(job_id: str) -> StreamingResponse:

@@ -118,6 +118,35 @@ def _acquire_local(source: SourceRef, target: Path) -> tuple[AcquiredSource, Sou
     return acquired, metadata
 
 
+def _youtube_options(target: Path, config: PipelineConfig, *, captions: bool) -> dict[str, Any]:
+    """Build yt-dlp options, allowing media acquisition without captions."""
+    options: dict[str, Any] = {
+        "outtmpl": str(target / "media.%(ext)s"),
+        "format": f"bv*[height<={config.frames.max_resolution}]+ba/b[height<={config.frames.max_resolution}]/b",
+        "merge_output_format": "mp4",
+        "writeinfojson": True,
+        "quiet": True,
+        "no_warnings": True,
+        "noprogress": True,
+    }
+    if captions:
+        options.update(
+            {
+                "writesubtitles": True,
+                "writeautomaticsub": True,
+                "subtitleslangs": ["en", "en.*"],
+                "subtitlesformat": "vtt",
+            }
+        )
+    return options
+
+
+def _is_caption_download_error(error: Exception) -> bool:
+    """Identify subtitle/caption failures that should not block media download."""
+    message = str(error).lower()
+    return "subtitle" in message or "caption" in message
+
+
 def _acquire_youtube(source: SourceRef, target: Path, config: PipelineConfig) -> tuple[AcquiredSource, SourceMetadata]:
     try:
         import yt_dlp
@@ -130,33 +159,35 @@ def _acquire_youtube(source: SourceRef, target: Path, config: PipelineConfig) ->
             suggestion="Install the project with: python -m pip install -e backend",
         ) from exc
 
-    maximum = config.frames.max_resolution
-    options = {
-        "outtmpl": str(target / "media.%(ext)s"),
-        "format": f"bv*[height<={maximum}]+ba/b[height<={maximum}]/b",
-        "merge_output_format": "mp4",
-        "writesubtitles": True,
-        "writeautomaticsub": True,
-        "subtitleslangs": ["en", "en.*"],
-        "subtitlesformat": "vtt",
-        "writeinfojson": True,
-        "quiet": True,
-        "no_warnings": True,
-        "noprogress": True,
-    }
+    caption_warning: str | None = None
     try:
-        with yt_dlp.YoutubeDL(options) as downloader:
+        with yt_dlp.YoutubeDL(_youtube_options(target, config, captions=True)) as downloader:
             info = downloader.extract_info(source.value, download=True)
     except Exception as exc:  # yt-dlp exposes several version-specific exceptions.
-        raise ExtractorError(
-            code=ErrorCode.SOURCE_UNAVAILABLE,
-            message=f"Could not acquire YouTube source: {exc}",
-            stage="acquire",
-            provider="yt-dlp",
-            source=source.value,
-            retryable=True,
-            suggestion="Check the URL, network access, video availability, and FFmpeg installation.",
-        ) from exc
+        if not _is_caption_download_error(exc):
+            raise ExtractorError(
+                code=ErrorCode.SOURCE_UNAVAILABLE,
+                message=f"Could not acquire YouTube source: {exc}",
+                stage="acquire",
+                provider="yt-dlp",
+                source=source.value,
+                retryable=True,
+                suggestion="Check the URL, network access, video availability, and FFmpeg installation.",
+            ) from exc
+        caption_warning = f"YouTube captions were unavailable ({exc}); continuing with media-only acquisition."
+        try:
+            with yt_dlp.YoutubeDL(_youtube_options(target, config, captions=False)) as downloader:
+                info = downloader.extract_info(source.value, download=True)
+        except Exception as retry_error:
+            raise ExtractorError(
+                code=ErrorCode.SOURCE_UNAVAILABLE,
+                message=f"Could not acquire YouTube media after captions failed: {retry_error}",
+                stage="acquire",
+                provider="yt-dlp",
+                source=source.value,
+                retryable=True,
+                suggestion="Wait for the YouTube rate limit to clear, upload a local file, or check the URL and network access.",
+            ) from retry_error
 
     media_candidates = [
         path for path in target.glob("media.*") if path.suffix.lower() not in {".json", ".vtt"}
@@ -171,6 +202,9 @@ def _acquire_youtube(source: SourceRef, target: Path, config: PipelineConfig) ->
             suggestion="Install FFmpeg and retry with a supported format.",
         )
     captions = tuple(sorted(target.glob("*.vtt")))
+    extra = {"id": info.get("id"), "uploader": info.get("uploader")}
+    if caption_warning:
+        extra["caption_warning"] = caption_warning
     metadata = SourceMetadata(
         source=source,
         title=info.get("title"),
@@ -179,7 +213,7 @@ def _acquire_youtube(source: SourceRef, target: Path, config: PipelineConfig) ->
         media_types=["video"],
         has_captions=bool(captions),
         caption_languages=["en"] if captions else [],
-        extra={"id": info.get("id"), "uploader": info.get("uploader")},
+        extra=extra,
     )
     metadata_path = target / "metadata.json"
     _write_json(metadata_path, metadata.__dict__)

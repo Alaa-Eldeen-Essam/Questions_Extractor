@@ -39,6 +39,7 @@ vision_enabled = true
 markdown = true
 json = true
 transcript = false
+word = true
 include_frame_links = true
 
 [privacy]

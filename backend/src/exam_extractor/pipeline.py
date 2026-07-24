@@ -286,6 +286,8 @@ def run_pipeline(
         else:
             begin(StageName.SPEECH)
             warnings: list[str] = []
+            if metadata.extra.get("caption_warning"):
+                warnings.append(str(metadata.extra["caption_warning"]))
             segments: list[TranscriptSegment] = []
             for caption_path in acquired.caption_paths:
                 segments.extend(parse_caption_file(caption_path, language="en").segments)

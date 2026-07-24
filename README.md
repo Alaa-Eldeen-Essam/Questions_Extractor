@@ -16,13 +16,13 @@ Ollama, or another compatible endpoint.
 
 ## Current release
 
-The published v0.1.0 image is:
+The published v0.1.1 image is:
 
 ~~~text
-docker.io/alaaeldeenessam/exam-video-extractor:0.1.0
+docker.io/alaaeldeenessam/exam-video-extractor:0.1.1
 ~~~
 
-The workflow also publishes 0.1, latest, and a commit-SHA tag. Use 0.1.0 for
+The workflow also publishes 0.1, latest, and a commit-SHA tag. Use 0.1.1 for
 reproducible deployments and latest only when automatic upgrades are desired.
 
 ## Zero-code Docker usage
@@ -33,7 +33,7 @@ installing Python or Node.js, or reading the source code.
 Pull the image:
 
 ~~~powershell
-docker pull alaaeldeenessam/exam-video-extractor:0.1.0
+docker pull alaaeldeenessam/exam-video-extractor:0.1.1
 ~~~
 
 Create persistent Docker volumes once:
@@ -52,7 +52,7 @@ docker run -d `
   --publish 8000:8000 `
   --volume exam_extractor_outputs:/data/outputs `
   --volume exam_extractor_models:/data/models `
-  alaaeldeenessam/exam-video-extractor:0.1.0
+  alaaeldeenessam/exam-video-extractor:0.1.1
 ~~~
 
 Open the application in a browser:
@@ -112,7 +112,7 @@ docker run -d `
   --env-file .env `
   --volume exam_extractor_outputs:/data/outputs `
   --volume exam_extractor_models:/data/models `
-  alaaeldeenessam/exam-video-extractor:0.1.0
+  alaaeldeenessam/exam-video-extractor:0.1.1
 ~~~
 
 The .env file stays on the host and is not part of the image. Protect it, do
@@ -229,7 +229,7 @@ OPENROUTER_API_KEY=
 HF_TOKEN=
 
 # Optional:
-# EXTRACTOR_IMAGE=alaaeldeenessam/exam-video-extractor:0.1.0
+# EXTRACTOR_IMAGE=alaaeldeenessam/exam-video-extractor:0.1.1
 # EXTRACTOR_PORT=8000
 # EXTRACTOR_WORKERS=2
 # MAX_UPLOAD_BYTES=4294967296
@@ -238,7 +238,7 @@ HF_TOKEN=
 Windows PowerShell:
 
 ~~~powershell
-$env:EXTRACTOR_IMAGE = "alaaeldeenessam/exam-video-extractor:0.1.0"
+$env:EXTRACTOR_IMAGE = "alaaeldeenessam/exam-video-extractor:0.1.1"
 docker pull $env:EXTRACTOR_IMAGE
 docker compose up -d --no-build
 ~~~
@@ -246,7 +246,7 @@ docker compose up -d --no-build
 Linux:
 
 ~~~bash
-export EXTRACTOR_IMAGE=alaaeldeenessam/exam-video-extractor:0.1.0
+export EXTRACTOR_IMAGE=alaaeldeenessam/exam-video-extractor:0.1.1
 docker pull "$EXTRACTOR_IMAGE"
 docker compose up -d --no-build
 ~~~
@@ -330,7 +330,7 @@ cached models and outputs is intentional.
 3. Select a speech mode.
 4. Click Extract study material.
 5. Monitor acquire, speech, frames, OCR, questions, and render.
-6. Download Markdown, JSON, and transcript artifacts.
+6. Download Markdown, JSON, Word, and transcript artifacts when enabled.
 
 Uploaded extensions are .mp4, .mkv, .webm, .mov, .m4a, .mp3, .wav, .flac, and
 .pdf. MAX_UPLOAD_BYTES defaults to 4 GiB.
@@ -609,6 +609,7 @@ transcript.json     timestamped transcript segments and words
 questions.json      structured questions and evidence
 extraction.json     combined machine-readable output
 extraction.md       human-readable study output
+extraction.docx     Word study document with text and embedded visual evidence
 transcript.md       optional readable transcript
 ~~~
 

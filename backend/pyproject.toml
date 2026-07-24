@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "exam-video-extractor"
-version = "0.1.0"
+version = "0.1.1"
 description = "Elastic multimodal extraction pipeline for exam-prep media."
 requires-python = ">=3.11"
 dependencies = [

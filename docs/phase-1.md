@@ -10,6 +10,7 @@
 - FFmpeg scene-change or interval frame extraction.
 - Tesseract OCR over retained frames.
 - Markdown, JSON, transcript, and manifest artifacts.
+- A Word study artifact with embedded visual evidence.
 - Stable job folders for resume/re-run behavior.
 - No-LLM operation by default.
 - Verbose user-facing errors and suggestions.
@@ -89,6 +90,7 @@ ocr.json
 transcript.json
 extraction.json
 extraction.md
+extraction.docx
 transcript.md       # only with --transcript
 ```
 

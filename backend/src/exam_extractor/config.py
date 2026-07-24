@@ -58,6 +58,7 @@ class OutputConfig:
     markdown: bool = True
     json: bool = True
     transcript: bool = False
+    word: bool = True
     include_frame_links: bool = True
 
 

@@ -9,6 +9,7 @@ from ..models.questions import QuestionRecord
 from ..models.sources import SourceMetadata
 from ..models.transcripts import Transcript
 from .serialization import jsonable
+from .docx_service import write_docx
 
 
 def write_json(path: Path, value: object) -> None:
@@ -114,5 +115,9 @@ def write_outputs(
             ),
             encoding="utf-8",
         )
+        outputs.append(path)
+    if config.output.word:
+        path = target / "extraction.docx"
+        write_docx(path, metadata, transcript, frames, ocr, questions, config, warnings)
         outputs.append(path)
     return outputs
