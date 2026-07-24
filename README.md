@@ -25,6 +25,112 @@ docker.io/alaaeldeenessam/exam-video-extractor:0.1.0
 The workflow also publishes 0.1, latest, and a commit-SHA tag. Use 0.1.0 for
 reproducible deployments and latest only when automatic upgrades are desired.
 
+## Zero-code Docker usage
+
+You can use the published image directly without cloning the repository,
+installing Python or Node.js, or reading the source code.
+
+Pull the image:
+
+~~~powershell
+docker pull alaaeldeenessam/exam-video-extractor:0.1.0
+~~~
+
+Create persistent Docker volumes once:
+
+~~~powershell
+docker volume create exam_extractor_outputs
+docker volume create exam_extractor_models
+~~~
+
+Start the application:
+
+~~~powershell
+docker run -d `
+  --name exam-video-extractor `
+  --restart unless-stopped `
+  --publish 8000:8000 `
+  --volume exam_extractor_outputs:/data/outputs `
+  --volume exam_extractor_models:/data/models `
+  alaaeldeenessam/exam-video-extractor:0.1.0
+~~~
+
+Open the application in a browser:
+
+~~~text
+http://localhost:8000
+~~~
+
+Check health and logs:
+
+~~~powershell
+Invoke-RestMethod http://localhost:8000/health/live
+docker logs -f exam-video-extractor
+~~~
+
+Stop, start, or remove the container:
+
+~~~powershell
+docker stop exam-video-extractor
+docker start exam-video-extractor
+docker rm -f exam-video-extractor
+~~~
+
+The named volumes remain after removing the container. This means downloaded
+Whisper models and generated outputs are reused by a later container. Delete
+the volumes only when you intentionally want to erase them:
+
+~~~powershell
+docker volume rm exam_extractor_outputs exam_extractor_models
+~~~
+
+Linux users can run the same commands after changing the PowerShell line
+continuation character to a single line or a Bash backslash.
+
+### Direct Docker usage with runtime secrets
+
+Secrets must never be added to the Docker image. An image is shareable and its
+layers can be inspected; baking an API key into it would expose that key to
+anyone who can pull the image. Pass secrets to the container only at runtime.
+
+Create a file named .env in the directory from which you will run Docker:
+
+~~~env
+OPENAI_API_KEY=
+GEMINI_API_KEY=
+OPENROUTER_API_KEY=
+HF_TOKEN=
+~~~
+
+Add only the keys you intend to use, then start the container with --env-file:
+
+~~~powershell
+docker run -d `
+  --name exam-video-extractor `
+  --restart unless-stopped `
+  --publish 8000:8000 `
+  --env-file .env `
+  --volume exam_extractor_outputs:/data/outputs `
+  --volume exam_extractor_models:/data/models `
+  alaaeldeenessam/exam-video-extractor:0.1.0
+~~~
+
+The .env file stays on the host and is not part of the image. Protect it, do
+not commit it to Git, and do not paste its contents into an issue or chat. If
+no remote provider is needed, omit --env-file entirely; captions, OCR,
+deterministic question extraction, and public local Whisper models work without
+API keys.
+
+The keys make providers available to the server; they do not automatically
+select a provider. The current UI directly selects speech mode. LLM provider
+selection and model settings are available through the advanced API options
+documented below. The default no-key path remains fully usable.
+
+For a GUI-only Docker Desktop workflow, create the container in Docker Desktop,
+map host port 8000 to container port 8000, add named volumes at
+/data/outputs and /data/models, and add the same environment variables in the
+container's Environment variables panel.
+
 ## Processing pipeline
 
 Each job is resumable and runs these stages:
