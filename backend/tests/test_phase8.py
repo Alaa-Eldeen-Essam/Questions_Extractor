@@ -11,7 +11,7 @@ from exam_extractor.models import FrameEvidence, OCRResult, SourceKind, SourceMe
 from exam_extractor.models.questions import AnswerOption, QuestionRecord
 from exam_extractor.services.docx_service import write_docx
 from exam_extractor.services.pdf_service import extract_pdf_pages
-from exam_extractor.services.source_service import _is_caption_download_error, acquire_source, detect_source
+from exam_extractor.services.source_service import _fetch_transcript_fallback, _is_caption_download_error, _youtube_video_id, acquire_source, detect_source
 
 
 class Phase8Tests(unittest.TestCase):
@@ -42,6 +42,52 @@ class Phase8Tests(unittest.TestCase):
     def test_caption_failures_are_classified_as_recoverable(self) -> None:
         self.assertTrue(_is_caption_download_error(RuntimeError("HTTP 429 subtitles")))
         self.assertFalse(_is_caption_download_error(RuntimeError("video unavailable")))
+        self.assertEqual(_youtube_video_id("https://www.youtube.com/watch?v=abc123&list=playlist"), "abc123")
+
+    def test_transcript_fallback_writes_webvtt(self) -> None:
+        class FakeApi:
+            def fetch(self, _video_id, languages):
+                return [SimpleNamespace(text="Hello transcript", start=1.5, duration=2.0)]
+
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            fake_module = SimpleNamespace(YouTubeTranscriptApi=lambda: FakeApi())
+            with patch.dict(sys.modules, {"youtube_transcript_api": fake_module}):
+                result = _fetch_transcript_fallback("https://www.youtube.com/watch?v=abc123", target)
+            self.assertIsNotNone(result)
+            path, language = result
+            self.assertEqual(language, "en")
+            self.assertIn("00:00:01.500 --> 00:00:03.500", path.read_text(encoding="utf-8"))
+            self.assertIn("Hello transcript", path.read_text(encoding="utf-8"))
+
+    def test_transcript_fallback_uses_available_non_english_language(self) -> None:
+        class FakeTranscript:
+            language_code = "ar"
+
+            def fetch(self):
+                return [SimpleNamespace(text="نص المحاضرة", start=0.0, duration=1.0)]
+
+        class FakeTranscriptList:
+            manually_created_transcripts = []
+            generated_transcripts = [FakeTranscript()]
+
+        class FakeApi:
+            def fetch(self, _video_id, languages):
+                raise RuntimeError("No English transcript")
+
+            def list(self, _video_id):
+                return FakeTranscriptList()
+
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            fake_module = SimpleNamespace(YouTubeTranscriptApi=lambda: FakeApi())
+            with patch.dict(sys.modules, {"youtube_transcript_api": fake_module}):
+                result = _fetch_transcript_fallback("https://www.youtube.com/watch?v=abc123", target)
+            self.assertIsNotNone(result)
+            path, language = result
+            self.assertEqual(language, "ar")
+            self.assertEqual(path.name, "captions.ar.vtt")
+            self.assertIn("نص المحاضرة", path.read_text(encoding="utf-8"))
 
     def test_youtube_media_falls_back_when_caption_download_fails(self) -> None:
         class FakeDownloader:

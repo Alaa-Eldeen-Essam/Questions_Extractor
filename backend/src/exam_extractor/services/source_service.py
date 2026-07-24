@@ -3,8 +3,10 @@
 import json
 import re
 import shutil
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from ..config import PipelineConfig
 from ..errors import ErrorCode, ExtractorError
@@ -102,7 +104,7 @@ def _acquire_local(source: SourceRef, target: Path) -> tuple[AcquiredSource, Sou
         title=original.stem,
         media_types=[source.kind.value],
         has_captions=bool(captions),
-        caption_languages=["en"] if captions else [],
+        caption_languages=sorted({_caption_language(path) for path in captions}),
         extra={"size_bytes": original.stat().st_size},
     )
     metadata_path = target / "metadata.json"
@@ -124,6 +126,7 @@ def _youtube_options(target: Path, config: PipelineConfig, *, captions: bool) ->
         "outtmpl": str(target / "media.%(ext)s"),
         "format": f"bv*[height<={config.frames.max_resolution}]+ba/b[height<={config.frames.max_resolution}]/b",
         "merge_output_format": "mp4",
+        "noplaylist": True,
         "writeinfojson": True,
         "quiet": True,
         "no_warnings": True,
@@ -139,6 +142,104 @@ def _youtube_options(target: Path, config: PipelineConfig, *, captions: bool) ->
             }
         )
     return options
+
+
+def _youtube_video_id(value: str) -> str | None:
+    """Extract one video ID while ignoring playlist and timestamp parameters."""
+    parsed = urlparse(value)
+    query_id = parse_qs(parsed.query).get("v", [None])[0]
+    if query_id:
+        return query_id
+    if parsed.netloc.lower().endswith("youtu.be"):
+        return parsed.path.strip("/").split("/", 1)[0] or None
+    match = re.search(r"/(?:shorts|embed)/([A-Za-z0-9_-]{6,})", parsed.path)
+    return match.group(1) if match else None
+
+
+def _seconds_to_vtt(seconds: float) -> str:
+    """Format seconds as a WebVTT timestamp."""
+    value = timedelta(seconds=max(0.0, seconds))
+    total = value.total_seconds()
+    hours = int(total // 3600)
+    minutes = int((total % 3600) // 60)
+    remainder = total % 60
+    return f"{hours:02d}:{minutes:02d}:{remainder:06.3f}"
+
+
+def _caption_language(path: Path) -> str:
+    """Infer a caption language from common yt-dlp/WebVTT filenames."""
+    parts = path.stem.split(".")
+    return parts[-1] if len(parts) > 1 and parts[-1] else "en"
+
+
+def _fetch_transcript_fallback(source: str, target: Path) -> tuple[Path, str] | None:
+    """Fetch a visible YouTube transcript when yt-dlp captions are rate-limited.
+
+    English is preferred, but a video may expose only another transcript language
+    (for example, an Arabic auto-generated transcript).  Returning that language
+    lets the pipeline use the transcript immediately without mislabeling it.
+    """
+    video_id = _youtube_video_id(source)
+    if not video_id:
+        return None
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+
+        api = YouTubeTranscriptApi()
+        language = "en"
+        try:
+            fetched = api.fetch(video_id, languages=["en"])
+        except Exception:
+            transcript_list = api.list(video_id)
+            try:
+                candidates = list(transcript_list)
+            except TypeError:
+                candidates = []
+                for attribute in ("manually_created_transcripts", "_manually_created_transcripts"):
+                    values = getattr(transcript_list, attribute, {})
+                    candidates.extend(values.values() if isinstance(values, dict) else values)
+                for attribute in ("generated_transcripts", "_generated_transcripts"):
+                    values = getattr(transcript_list, attribute, {})
+                    candidates.extend(values.values() if isinstance(values, dict) else values)
+            selected = next(
+                (
+                    item
+                    for item in candidates
+                    if str(getattr(item, "language_code", "")).lower().startswith("en")
+                ),
+                next(iter(candidates), None),
+            )
+            if selected is None:
+                return None
+            fetched = selected.fetch()
+            language = str(getattr(selected, "language_code", "und")) or "und"
+    except Exception:
+        return None
+    lines = ["WEBVTT", ""]
+    for index, snippet in enumerate(fetched, start=1):
+        if isinstance(snippet, dict):
+            text = str(snippet.get("text", "")).strip()
+            start = float(snippet.get("start", 0.0))
+            duration = float(snippet.get("duration", 0.0))
+        else:
+            text = str(getattr(snippet, "text", "")).strip()
+            start = float(getattr(snippet, "start", 0.0))
+            duration = float(getattr(snippet, "duration", 0.0))
+        if not text:
+            continue
+        lines.extend(
+            [
+                str(index),
+                f"{_seconds_to_vtt(start)} --> {_seconds_to_vtt(start + max(duration, 0.1))}",
+                text.replace("\n", " "),
+                "",
+            ]
+        )
+    if len(lines) <= 2:
+        return None
+    destination = target / f"captions.{language}.vtt"
+    destination.write_text("\n".join(lines), encoding="utf-8")
+    return destination, language
 
 
 def _is_caption_download_error(error: Exception) -> bool:
@@ -174,7 +275,14 @@ def _acquire_youtube(source: SourceRef, target: Path, config: PipelineConfig) ->
                 retryable=True,
                 suggestion="Check the URL, network access, video availability, and FFmpeg installation.",
             ) from exc
-        caption_warning = f"YouTube captions were unavailable ({exc}); continuing with media-only acquisition."
+        fallback_caption = _fetch_transcript_fallback(source.value, target)
+        if fallback_caption:
+            caption_warning = (
+                "yt-dlp captions were rate-limited; an automatic YouTube transcript "
+                f"fallback was used (language: {fallback_caption[1]})."
+            )
+        else:
+            caption_warning = f"YouTube captions were unavailable ({exc}); continuing with media-only acquisition."
         try:
             with yt_dlp.YoutubeDL(_youtube_options(target, config, captions=False)) as downloader:
                 info = downloader.extract_info(source.value, download=True)
@@ -212,7 +320,7 @@ def _acquire_youtube(source: SourceRef, target: Path, config: PipelineConfig) ->
         language=info.get("language"),
         media_types=["video"],
         has_captions=bool(captions),
-        caption_languages=["en"] if captions else [],
+        caption_languages=sorted({_caption_language(path) for path in captions}),
         extra=extra,
     )
     metadata_path = target / "metadata.json"

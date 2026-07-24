@@ -120,7 +120,7 @@ def create_app(output_root: Path | None = None) -> FastAPI:
         yield
         manager.executor.shutdown(wait=True, cancel_futures=True)
 
-    app = FastAPI(title="Exam Video Extractor API", version="0.1.1", lifespan=lifespan)
+    app = FastAPI(title="Exam Video Extractor API", version="0.1.2", lifespan=lifespan)
     app.state.job_manager = manager
 
     @app.get("/health/live")

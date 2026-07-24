@@ -16,13 +16,13 @@ Ollama, or another compatible endpoint.
 
 ## Current release
 
-The published v0.1.1 image is:
+The published v0.1.2 image is:
 
 ~~~text
-docker.io/alaaeldeenessam/exam-video-extractor:0.1.1
+docker.io/alaaeldeenessam/exam-video-extractor:0.1.2
 ~~~
 
-The workflow also publishes 0.1, latest, and a commit-SHA tag. Use 0.1.1 for
+The workflow also publishes 0.1, latest, and a commit-SHA tag. Use 0.1.2 for
 reproducible deployments and latest only when automatic upgrades are desired.
 
 ## Zero-code Docker usage
@@ -33,7 +33,7 @@ installing Python or Node.js, or reading the source code.
 Pull the image:
 
 ~~~powershell
-docker pull alaaeldeenessam/exam-video-extractor:0.1.1
+docker pull alaaeldeenessam/exam-video-extractor:0.1.2
 ~~~
 
 Create persistent Docker volumes once:
@@ -52,7 +52,7 @@ docker run -d `
   --publish 8000:8000 `
   --volume exam_extractor_outputs:/data/outputs `
   --volume exam_extractor_models:/data/models `
-  alaaeldeenessam/exam-video-extractor:0.1.1
+  alaaeldeenessam/exam-video-extractor:0.1.2
 ~~~
 
 Open the application in a browser:
@@ -112,7 +112,7 @@ docker run -d `
   --env-file .env `
   --volume exam_extractor_outputs:/data/outputs `
   --volume exam_extractor_models:/data/models `
-  alaaeldeenessam/exam-video-extractor:0.1.1
+  alaaeldeenessam/exam-video-extractor:0.1.2
 ~~~
 
 The .env file stays on the host and is not part of the image. Protect it, do
@@ -229,7 +229,7 @@ OPENROUTER_API_KEY=
 HF_TOKEN=
 
 # Optional:
-# EXTRACTOR_IMAGE=alaaeldeenessam/exam-video-extractor:0.1.1
+# EXTRACTOR_IMAGE=alaaeldeenessam/exam-video-extractor:0.1.2
 # EXTRACTOR_PORT=8000
 # EXTRACTOR_WORKERS=2
 # MAX_UPLOAD_BYTES=4294967296
@@ -238,7 +238,7 @@ HF_TOKEN=
 Windows PowerShell:
 
 ~~~powershell
-$env:EXTRACTOR_IMAGE = "alaaeldeenessam/exam-video-extractor:0.1.1"
+$env:EXTRACTOR_IMAGE = "alaaeldeenessam/exam-video-extractor:0.1.2"
 docker pull $env:EXTRACTOR_IMAGE
 docker compose up -d --no-build
 ~~~
@@ -246,7 +246,7 @@ docker compose up -d --no-build
 Linux:
 
 ~~~bash
-export EXTRACTOR_IMAGE=alaaeldeenessam/exam-video-extractor:0.1.1
+export EXTRACTOR_IMAGE=alaaeldeenessam/exam-video-extractor:0.1.2
 docker pull "$EXTRACTOR_IMAGE"
 docker compose up -d --no-build
 ~~~
@@ -338,7 +338,24 @@ Uploaded extensions are .mp4, .mkv, .webm, .mov, .m4a, .mp3, .wav, .flac, and
 A host path typed into a browser is not automatically visible inside Docker. Use
 the upload control, bind-mount the directory, or pass a path that exists inside
 the container. YouTube acquisition runs inside the container using yt-dlp and
-tries to obtain English manual or automatic WebVTT captions.
+tries to obtain English manual or automatic WebVTT captions. If YouTube
+rate-limits yt-dlp subtitle requests, the application automatically queries the
+video transcript, prefers English, and otherwise uses the first available
+manual or auto-generated language. The actual language is recorded in
+`source/metadata.json`, `transcript.json`, and the transcript segments; it is
+never silently labeled as English. A video with only Arabic captions therefore
+produces an Arabic transcript unless an optional translation/LLM step is
+enabled.
+
+Playlist-safe YouTube handling
+
+You can paste a normal watch URL even when it includes `list=`, `index=`, or
+`t=` parameters. The extractor forces single-video acquisition, so it does not
+download the whole playlist. A visible YouTube transcript is used directly;
+there is no separate subtitle-download action for the user. The fallback uses
+the public `youtube-transcript-api` package, then skips local Whisper when a
+transcript is found. If no transcript exists in any language, `auto` falls
+back to local Whisper as documented below.
 
 ## Speech modes
 
@@ -667,9 +684,11 @@ for a smaller CPU test, or use captions/remote speech.
 
 ### No transcript
 
-Check captions and manifest.json warnings. Without captions, use auto or
-faster_whisper. For remote speech, check endpoint, model, key environment
-variable, quota, and upload limits.
+Check `source/metadata.json` and `manifest.json` warnings. The fallback records
+the language it found. If the video has no transcript in any language, use
+`auto` or `faster_whisper`; an English transcript cannot be produced from an
+Arabic-only caption track unless translation is enabled. For remote speech,
+check endpoint, model, key environment variable, quota, and upload limits.
 
 ### No questions
 
@@ -719,9 +738,9 @@ DOCKERHUB_TOKEN
 Publish a new release:
 
 ~~~bash
-git tag -a v0.1.1 -m "Release v0.1.1"
+git tag -a v0.1.2 -m "Release v0.1.2"
 git push origin main
-git push origin v0.1.1
+git push origin v0.1.2
 ~~~
 
 Monitor the workflow:

@@ -186,6 +186,12 @@ def _load_questions(path: Path) -> list[QuestionRecord]:
     ]
 
 
+def _caption_language(path: Path) -> str:
+    """Infer the language encoded in a caption filename."""
+    parts = path.stem.split(".")
+    return parts[-1] if len(parts) > 1 and parts[-1] else "en"
+
+
 def _read_manifest(path: Path, source: SourceRef) -> dict[str, Any]:
     if path.exists():
         return json.loads(path.read_text(encoding="utf-8"))
@@ -290,7 +296,9 @@ def run_pipeline(
                 warnings.append(str(metadata.extra["caption_warning"]))
             segments: list[TranscriptSegment] = []
             for caption_path in acquired.caption_paths:
-                segments.extend(parse_caption_file(caption_path, language="en").segments)
+                segments.extend(
+                    parse_caption_file(caption_path, language=_caption_language(caption_path)).segments
+                )
             segments.sort(key=lambda item: item.start_seconds)
             audio_path = acquired.audio_path
             needs_speech = config.speech.provider.lower() not in {"none", "captions"} and not segments
@@ -310,7 +318,7 @@ def run_pipeline(
             else:
                 transcript = Transcript(
                     segments=segments,
-                    language="en" if segments else None,
+                    language=segments[0].language if segments else None,
                     source="captions" if segments else "none",
                 )
             if not segments and not transcript.segments:
