@@ -40,3 +40,7 @@ markdown = true
 json = true
 transcript = false
 include_frame_links = true
+
+[privacy]
+redact_source = false
+# retention_days = 30

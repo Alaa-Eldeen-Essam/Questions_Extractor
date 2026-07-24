@@ -62,6 +62,14 @@ class OutputConfig:
 
 
 @dataclass
+class PrivacyConfig:
+    """Controls source visibility and future retention jobs."""
+
+    redact_source: bool = False
+    retention_days: int | None = None
+
+
+@dataclass
 class PipelineConfig:
     profile: str = "balanced"
     output_dir: Path = Path("outputs")
@@ -70,6 +78,7 @@ class PipelineConfig:
     ocr: OCRConfig = field(default_factory=OCRConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
+    privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
 
     @classmethod
     def from_toml(cls, path: Path) -> "PipelineConfig":
@@ -85,6 +94,7 @@ class PipelineConfig:
             ("ocr", config.ocr),
             ("llm", config.llm),
             ("output", config.output),
+            ("privacy", config.privacy),
         ):
             for key, value in data.get(section_name, {}).items():
                 if not hasattr(target, key):
@@ -115,6 +125,8 @@ class PipelineConfig:
             raise ValueError("llm.timeout_seconds must be positive")
         if self.llm.retry_count < 0:
             raise ValueError("llm.retry_count cannot be negative")
+        if self.privacy.retention_days is not None and self.privacy.retention_days <= 0:
+            raise ValueError("privacy.retention_days must be positive when set")
         if self.llm.enabled and self.llm.provider == "none":
             raise ValueError("llm.provider cannot be 'none' when llm.enabled is true")
 

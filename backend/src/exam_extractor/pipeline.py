@@ -36,6 +36,7 @@ from .services.output_service import write_json, write_outputs
 from .services.serialization import jsonable
 from .services.speech_service import transcribe_audio
 from .services.question_service import extract_questions
+from .services.pdf_service import extract_pdf_pages
 from .services.source_service import acquire_source, detect_source, load_acquired
 
 
@@ -67,6 +68,7 @@ def _job_id(source: str, config: PipelineConfig) -> str:
             "speech": config.speech.__dict__,
             "frames": config.frames.__dict__,
             "ocr": config.ocr.__dict__,
+            "privacy": config.privacy.__dict__,
             "output": config.output.__dict__,
         },
         sort_keys=True,
@@ -233,6 +235,9 @@ def run_pipeline(
     workspace.mkdir(parents=True, exist_ok=True)
     manifest_path = workspace / "manifest.json"
     manifest = _read_manifest(manifest_path, source)
+    manifest["schema_version"] = 1
+    if config.privacy.redact_source:
+        manifest["source"] = {"kind": source.kind.value, "value": "[redacted]"}
     manifest["status"] = JobStatus.RUNNING.value
     _write_manifest(manifest_path, manifest)
 
@@ -286,7 +291,7 @@ def run_pipeline(
                 segments.extend(parse_caption_file(caption_path, language="en").segments)
             segments.sort(key=lambda item: item.start_seconds)
             audio_path = acquired.audio_path
-            if not audio_path and acquired.media_path:
+            if source.kind != SourceKind.PDF and not audio_path and acquired.media_path:
                 try:
                     audio_path = extract_audio(acquired.media_path, workspace / "audio")
                 except ExtractorError as error:
@@ -315,6 +320,14 @@ def run_pipeline(
             frames: list[FrameEvidence] = []
             if not should_skip(StageName.FRAMES):
                 begin(StageName.FRAMES)
+                complete(StageName.FRAMES, frames)
+        elif source.kind == SourceKind.PDF:
+            if should_skip(StageName.FRAMES):
+                frames = _load_frames(workspace / "frames.json")
+            else:
+                begin(StageName.FRAMES)
+                frames = extract_pdf_pages(acquired.media_path, workspace / "frames", config) if acquired.media_path else []
+                write_json(workspace / "frames.json", frames)
                 complete(StageName.FRAMES, frames)
         elif should_skip(StageName.FRAMES):
             frames = _load_frames(workspace / "frames.json")

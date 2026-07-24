@@ -271,7 +271,7 @@ docker.io/<dockerhub-user>/exam-video-extractor:sha-<commit>
 A new user can run the application by following the README without asking the
 author for undocumented setup steps.
 
-## Phase 8 — release hardening
+## Phase 8 — release hardening (complete)
 
 This phase is optional but recommended before public promotion.
 

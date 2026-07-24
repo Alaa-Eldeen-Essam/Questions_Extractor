@@ -5,6 +5,7 @@ import json
 import os
 import threading
 import uuid
+from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, fields
 from pathlib import Path
@@ -111,8 +112,14 @@ def _apply_options(config: PipelineConfig, options: dict[str, Any]) -> PipelineC
 
 def create_app(output_root: Path | None = None) -> FastAPI:
     """Create an independently testable FastAPI application."""
-    app = FastAPI(title="Exam Video Extractor API", version="0.1.0")
     manager = JobManager(Path(output_root or os.getenv("EXTRACTOR_OUTPUT_DIR", "outputs")))
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        yield
+        manager.executor.shutdown(wait=True, cancel_futures=True)
+
+    app = FastAPI(title="Exam Video Extractor API", version="0.1.0", lifespan=lifespan)
     app.state.job_manager = manager
 
     @app.get("/health/live")
@@ -130,7 +137,7 @@ def create_app(output_root: Path | None = None) -> FastAPI:
     @app.get("/api/config/default")
     def default_config() -> dict[str, Any]:
         config = PipelineConfig()
-        return {"profile": config.profile, "output_dir": str(config.output_dir), "speech": asdict(config.speech), "frames": asdict(config.frames), "ocr": asdict(config.ocr), "llm": asdict(config.llm), "output": asdict(config.output)}
+        return {"profile": config.profile, "output_dir": str(config.output_dir), "speech": asdict(config.speech), "frames": asdict(config.frames), "ocr": asdict(config.ocr), "llm": asdict(config.llm), "output": asdict(config.output), "privacy": asdict(config.privacy)}
 
     @app.post("/api/jobs", status_code=202)
     def create_job(payload: JobRequest) -> dict[str, str]:
@@ -151,7 +158,16 @@ def create_app(output_root: Path | None = None) -> FastAPI:
         upload_dir = manager.output_root / "uploads"
         upload_dir.mkdir(parents=True, exist_ok=True)
         path = upload_dir / f"{uuid.uuid4().hex}{suffix}"
-        path.write_bytes(await file.read())
+        maximum = int(os.getenv("MAX_UPLOAD_BYTES", str(4 * 1024 * 1024 * 1024)))
+        written = 0
+        with path.open("wb") as handle:
+            while chunk := await file.read(1024 * 1024):
+                written += len(chunk)
+                if written > maximum:
+                    path.unlink(missing_ok=True)
+                    raise HTTPException(status_code=413, detail="Uploaded file exceeds MAX_UPLOAD_BYTES.")
+                handle.write(chunk)
+        await file.close()
         return {"job_id": manager.submit(str(path), PipelineConfig()), "status": "queued"}
 
     @app.get("/api/jobs/{job_id}")

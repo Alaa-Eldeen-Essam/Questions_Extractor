@@ -69,13 +69,7 @@ def acquire_source(source: SourceRef, target: Path, config: PipelineConfig) -> t
     if source.kind in {SourceKind.VIDEO, SourceKind.AUDIO}:
         return _acquire_local(source, target)
     if source.kind == SourceKind.PDF:
-        raise ExtractorError(
-            code=ErrorCode.MEDIA_UNREADABLE,
-            message="PDF input is reserved for a later pipeline phase.",
-            stage="acquire",
-            source=source.value,
-            suggestion="Use a video or audio file for Phase 1, or wait for PDF support.",
-        )
+        return _acquire_local(source, target)
     raise ExtractorError(
         code=ErrorCode.INVALID_INPUT,
         message=f"Unsupported or unknown source: {source.value}",

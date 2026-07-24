@@ -55,6 +55,9 @@ docker compose down
 The mounted `data/` directory retains jobs, models, outputs, and caches across
 container upgrades.
 
+PDF uploads are rendered with Poppler and passed through OCR. Video/audio
+uploads use FFmpeg and the configured caption, Whisper, or remote speech path.
+
 ## Option B — Run from source
 
 Prerequisites:

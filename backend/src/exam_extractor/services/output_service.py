@@ -37,6 +37,7 @@ def write_outputs(
     target.mkdir(parents=True, exist_ok=True)
     outputs: list[Path] = []
     payload = {
+        "schema_version": 1,
         "metadata": metadata,
         "transcript": transcript,
         "frames": frames,
@@ -53,7 +54,7 @@ def write_outputs(
         lines = [
             f"# {metadata.title or metadata.source.value}",
             "",
-            f"- Source: `{metadata.source.value}`",
+            f"- Source: `{('[redacted]' if config.privacy.redact_source else metadata.source.value)}`",
             f"- Type: `{metadata.source.kind.value}`",
             f"- Captions: `{metadata.has_captions}`",
             "",

@@ -28,8 +28,8 @@ later phases.
 | 4 | Question/answer intelligence | Complete |
 | 5 | FastAPI backend | Complete |
 | 6 | React/Vite frontend | In progress |
-| 7 | Release documentation and packaging | In progress |
-| 8 | Optional release hardening | Planned |
+| 7 | Release documentation and packaging | Complete |
+| 8 | Optional release hardening | In progress |
 
 ## Development
 
