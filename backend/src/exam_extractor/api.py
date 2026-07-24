@@ -22,7 +22,7 @@ from .services.output_service import write_json
 from .services.serialization import jsonable
 
 try:
-    from fastapi import FastAPI, File, HTTPException, UploadFile
+    from fastapi import FastAPI, File, Form, HTTPException, UploadFile
     from fastapi.responses import FileResponse, StreamingResponse
     from fastapi.staticfiles import StaticFiles
     from pydantic import BaseModel, Field
@@ -184,7 +184,7 @@ def create_app(output_root: Path | None = None) -> FastAPI:
         yield
         manager.executor.shutdown(wait=True, cancel_futures=True)
 
-    app = FastAPI(title="Exam Video Extractor API", version="0.1.3", lifespan=lifespan)
+    app = FastAPI(title="Exam Video Extractor API", version="0.1.4", lifespan=lifespan)
     app.state.job_manager = manager
 
     @app.get("/health/live")
@@ -237,7 +237,20 @@ def create_app(output_root: Path | None = None) -> FastAPI:
         return {"job_id": job_id, "status": "queued"}
 
     @app.post("/api/jobs/file", status_code=202)
-    async def create_file_job(file: UploadFile = File(...)) -> dict[str, str]:
+    async def create_file_job(
+        file: UploadFile = File(...),
+        profile: str = Form("balanced"),
+        options_json: str = Form("{}"),
+    ) -> dict[str, str]:
+        config = PipelineConfig()
+        try:
+            apply_profile(config, profile)
+            options = json.loads(options_json)
+            if not isinstance(options, dict):
+                raise ValueError("options_json must contain a JSON object")
+            _apply_options(config, options)
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=f"Invalid upload settings: {exc}") from exc
         suffix = Path(file.filename or "upload.bin").suffix.lower()
         if suffix not in {".mp4", ".mkv", ".webm", ".mov", ".m4a", ".mp3", ".wav", ".flac", ".pdf"}:
             raise HTTPException(status_code=415, detail="Unsupported upload type.")
@@ -254,7 +267,7 @@ def create_app(output_root: Path | None = None) -> FastAPI:
                     raise HTTPException(status_code=413, detail="Uploaded file exceeds MAX_UPLOAD_BYTES.")
                 handle.write(chunk)
         await file.close()
-        return {"job_id": manager.submit(str(path), PipelineConfig()), "status": "queued"}
+        return {"job_id": manager.submit(str(path), config), "status": "queued"}
 
     @app.get("/api/jobs/{job_id}")
     def get_job(job_id: str) -> dict[str, Any]:

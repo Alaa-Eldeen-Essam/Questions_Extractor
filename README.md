@@ -16,13 +16,13 @@ Ollama, or another compatible endpoint.
 
 ## Current release
 
-The published v0.1.3 image is:
+The published v0.1.4 image is:
 
 ~~~text
-docker.io/alaaeldeenessam/exam-video-extractor:0.1.3
+docker.io/alaaeldeenessam/exam-video-extractor:0.1.4
 ~~~
 
-The workflow also publishes 0.1, latest, and a commit-SHA tag. Use 0.1.3 for
+The workflow also publishes 0.1, latest, and a commit-SHA tag. Use 0.1.4 for
 reproducible deployments and latest only when automatic upgrades are desired.
 
 ## Zero-code Docker usage
@@ -33,7 +33,7 @@ installing Python or Node.js, or reading the source code.
 Pull the image:
 
 ~~~powershell
-docker pull alaaeldeenessam/exam-video-extractor:0.1.3
+docker pull alaaeldeenessam/exam-video-extractor:0.1.4
 ~~~
 
 Create persistent Docker volumes once:
@@ -52,7 +52,7 @@ docker run -d `
   --publish 8000:8000 `
   --volume exam_extractor_outputs:/data/outputs `
   --volume exam_extractor_models:/data/models `
-  alaaeldeenessam/exam-video-extractor:0.1.3
+  alaaeldeenessam/exam-video-extractor:0.1.4
 ~~~
 
 Open the application in a browser:
@@ -112,7 +112,7 @@ docker run -d `
   --env-file .env `
   --volume exam_extractor_outputs:/data/outputs `
   --volume exam_extractor_models:/data/models `
-  alaaeldeenessam/exam-video-extractor:0.1.3
+  alaaeldeenessam/exam-video-extractor:0.1.4
 ~~~
 
 The .env file stays on the host and is not part of the image. Protect it, do
@@ -229,7 +229,7 @@ OPENROUTER_API_KEY=
 HF_TOKEN=
 
 # Optional:
-# EXTRACTOR_IMAGE=alaaeldeenessam/exam-video-extractor:0.1.3
+# EXTRACTOR_IMAGE=alaaeldeenessam/exam-video-extractor:0.1.4
 # EXTRACTOR_PORT=8000
 # EXTRACTOR_WORKERS=2
 # MAX_UPLOAD_BYTES=4294967296
@@ -238,7 +238,7 @@ HF_TOKEN=
 Windows PowerShell:
 
 ~~~powershell
-$env:EXTRACTOR_IMAGE = "alaaeldeenessam/exam-video-extractor:0.1.3"
+$env:EXTRACTOR_IMAGE = "alaaeldeenessam/exam-video-extractor:0.1.4"
 docker pull $env:EXTRACTOR_IMAGE
 docker compose up -d --no-build
 ~~~
@@ -246,7 +246,7 @@ docker compose up -d --no-build
 Linux:
 
 ~~~bash
-export EXTRACTOR_IMAGE=alaaeldeenessam/exam-video-extractor:0.1.3
+export EXTRACTOR_IMAGE=alaaeldeenessam/exam-video-extractor:0.1.4
 docker pull "$EXTRACTOR_IMAGE"
 docker compose up -d --no-build
 ~~~
@@ -781,9 +781,9 @@ DOCKERHUB_TOKEN
 Publish a new release:
 
 ~~~bash
-git tag -a v0.1.3 -m "Release v0.1.3"
+git tag -a v0.1.4 -m "Release v0.1.4"
 git push origin main
-git push origin v0.1.3
+git push origin v0.1.4
 ~~~
 
 Monitor the workflow:

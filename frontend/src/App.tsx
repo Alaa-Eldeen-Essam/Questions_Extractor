@@ -107,7 +107,7 @@ function App() {
     try {
       let response: Response;
       if (file) {
-        const form = new FormData(); form.append("file", file);
+        const form = new FormData(); form.append("file", file); form.append("profile", profile); form.append("options_json", JSON.stringify(options));
         response = await fetch(`${API}/api/jobs/file`, { method: "POST", body: form });
       } else {
         response = await fetch(`${API}/api/jobs`, {
