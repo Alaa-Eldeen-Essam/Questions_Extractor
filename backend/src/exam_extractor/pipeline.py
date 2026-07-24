@@ -38,6 +38,7 @@ from .services.speech_service import transcribe_audio
 from .services.question_service import extract_questions
 from .services.pdf_service import extract_pdf_pages
 from .services.source_service import acquire_source, detect_source, load_acquired
+from .services.profiles import resolved_config
 
 
 @dataclass
@@ -242,6 +243,8 @@ def run_pipeline(
     manifest_path = workspace / "manifest.json"
     manifest = _read_manifest(manifest_path, source)
     manifest["schema_version"] = 1
+    manifest["profile"] = config.profile
+    manifest["configuration"] = resolved_config(config)
     if config.privacy.redact_source:
         manifest["source"] = {"kind": source.kind.value, "value": "[redacted]"}
     manifest["status"] = JobStatus.RUNNING.value

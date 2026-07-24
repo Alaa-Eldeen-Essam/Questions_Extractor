@@ -16,6 +16,7 @@ from .config import PipelineConfig
 from .errors import ErrorCode, ExtractorError
 from .pipeline import _job_id, run_pipeline
 from .services.llm_service import available_llm_providers
+from .services.profiles import apply_profile, profile_catalog, resolved_config
 
 try:
     from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -143,8 +144,8 @@ def create_app(output_root: Path | None = None) -> FastAPI:
     @app.post("/api/jobs", status_code=202)
     def create_job(payload: JobRequest) -> dict[str, str]:
         config = PipelineConfig()
-        config.profile = payload.profile
         try:
+            apply_profile(config, payload.profile)
             _apply_options(config, payload.options)
             job_id = manager.submit(payload.source, config)
         except (ExtractorError, ValueError) as exc:

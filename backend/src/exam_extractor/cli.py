@@ -6,6 +6,7 @@ from pathlib import Path
 from .config import PipelineConfig
 from .errors import ExtractorError
 from .pipeline import run_pipeline
+from .services.profiles import apply_profile
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -34,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         config = PipelineConfig.from_toml(args.config) if args.config else PipelineConfig()
         if args.profile:
-            config.profile = args.profile
+            apply_profile(config, args.profile)
         if args.transcript:
             config.output.transcript = True
         workspace = run_pipeline(

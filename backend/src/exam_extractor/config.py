@@ -88,6 +88,9 @@ class PipelineConfig:
             data: dict[str, Any] = tomllib.load(handle)
         config = cls()
         config.profile = data.get("profile", config.profile)
+        from .services.profiles import apply_profile
+
+        apply_profile(config)
         config.output_dir = Path(data.get("output_dir", config.output_dir))
         for section_name, target in (
             ("speech", config.speech),
