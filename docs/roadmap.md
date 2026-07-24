@@ -69,7 +69,7 @@ Make speech extraction elastic while retaining a dependable local default.
 The user can choose automatic, local, or remote speech extraction and receives
 the same normalized transcript schema.
 
-## Phase 3 — LLM and visual providers
+## Phase 3 — LLM and visual providers (in progress)
 
 ### Goal
 

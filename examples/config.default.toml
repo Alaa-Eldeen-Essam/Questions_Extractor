@@ -30,6 +30,10 @@ language = "eng"
 enabled = false
 provider = "none"
 temperature = 0.1
+max_tokens = 2048
+timeout_seconds = 120.0
+retry_count = 1
+vision_enabled = true
 
 [output]
 markdown = true

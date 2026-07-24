@@ -47,6 +47,10 @@ class LLMConfig:
     base_url: str | None = None
     api_key_env: str | None = None
     temperature: float = 0.1
+    max_tokens: int = 2048
+    timeout_seconds: float = 120.0
+    retry_count: int = 1
+    vision_enabled: bool = True
 
 
 @dataclass
@@ -105,6 +109,12 @@ class PipelineConfig:
             raise ValueError("ocr.confidence_threshold must be between 0 and 1")
         if not 0 <= self.llm.temperature <= 2:
             raise ValueError("llm.temperature must be between 0 and 2")
+        if self.llm.max_tokens <= 0:
+            raise ValueError("llm.max_tokens must be positive")
+        if self.llm.timeout_seconds <= 0:
+            raise ValueError("llm.timeout_seconds must be positive")
+        if self.llm.retry_count < 0:
+            raise ValueError("llm.retry_count cannot be negative")
         if self.llm.enabled and self.llm.provider == "none":
             raise ValueError("llm.provider cannot be 'none' when llm.enabled is true")
 
