@@ -137,7 +137,7 @@ Turn raw multimodal evidence into a study-ready question bank.
 The generated Markdown clearly separates observed evidence, inferred answers,
 explanations, uncertainty, and timestamps.
 
-## Phase 5 — FastAPI application backend
+## Phase 5 — FastAPI application backend (in progress)
 
 ### Goal
 

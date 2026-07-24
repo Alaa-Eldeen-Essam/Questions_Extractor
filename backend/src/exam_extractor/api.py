@@ -1,0 +1,189 @@
+"""FastAPI application over the shared extraction pipeline."""
+
+import asyncio
+import json
+import os
+import threading
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict, fields
+from pathlib import Path
+from typing import Any
+
+from .config import PipelineConfig
+from .errors import ErrorCode, ExtractorError
+from .pipeline import _job_id, run_pipeline
+from .services.llm_service import available_llm_providers
+
+try:
+    from fastapi import FastAPI, File, HTTPException, UploadFile
+    from fastapi.responses import FileResponse, StreamingResponse
+    from pydantic import BaseModel, Field
+except ImportError as exc:  # pragma: no cover
+    raise RuntimeError("Install the web extra: python -m pip install -e 'backend[web]'") from exc
+
+
+class JobRequest(BaseModel):
+    """Validated URL/path job request."""
+
+    source: str = Field(min_length=1, max_length=4096)
+    profile: str = "balanced"
+    options: dict[str, Any] = Field(default_factory=dict)
+
+
+class JobManager:
+    """Small in-process job manager backed by pipeline manifests."""
+
+    def __init__(self, output_root: Path) -> None:
+        self.output_root = output_root
+        self.output_root.mkdir(parents=True, exist_ok=True)
+        self.executor = ThreadPoolExecutor(max_workers=max(1, int(os.getenv("EXTRACTOR_WORKERS", "2"))))
+        self.events: dict[str, list[str]] = {}
+        self.cancel_events: dict[str, threading.Event] = {}
+        self.lock = threading.Lock()
+
+    def submit(self, source: str, config: PipelineConfig) -> str:
+        job_id = _job_id(source, config)
+        with self.lock:
+            self.events.setdefault(job_id, []).append(json.dumps({"event": "queued", "job_id": job_id}))
+            self.cancel_events[job_id] = threading.Event()
+        self.executor.submit(self._run, job_id, source, config)
+        return job_id
+
+    def _run(self, job_id: str, source: str, config: PipelineConfig) -> None:
+        def progress(message: str) -> None:
+            with self.lock:
+                self.events.setdefault(job_id, []).append(json.dumps({"event": "progress", "message": message}))
+            if self.cancel_events[job_id].is_set():
+                raise ExtractorError(ErrorCode.CANCELLED, "Job cancellation requested.", stage="pipeline")
+
+        try:
+            workspace = run_pipeline(source, config, output_root=self.output_root, progress=progress)
+            self._record(job_id, {"event": "completed", "workspace": str(workspace)})
+        except Exception as exc:
+            self._record(job_id, {"event": "failed", "message": str(exc)})
+
+    def _record(self, job_id: str, event: dict[str, Any]) -> None:
+        with self.lock:
+            self.events.setdefault(job_id, []).append(json.dumps(event))
+
+    def cancel(self, job_id: str) -> bool:
+        event = self.cancel_events.get(job_id)
+        if event is None:
+            return False
+        event.set()
+        self._record(job_id, {"event": "cancellation_requested"})
+        return True
+
+    def status(self, job_id: str) -> dict[str, Any]:
+        manifest = self.output_root / job_id / "manifest.json"
+        if manifest.exists():
+            return json.loads(manifest.read_text(encoding="utf-8"))
+        with self.lock:
+            return {"job_id": job_id, "status": "queued", "events": len(self.events.get(job_id, []))}
+
+    def artifact(self, job_id: str, relative: str) -> Path:
+        workspace = (self.output_root / job_id).resolve()
+        candidate = (workspace / relative).resolve()
+        try:
+            candidate.relative_to(workspace)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Artifact path escapes the job workspace.") from exc
+        if not candidate.is_file():
+            raise HTTPException(status_code=404, detail="Artifact not found.")
+        return candidate
+
+
+def _apply_options(config: PipelineConfig, options: dict[str, Any]) -> PipelineConfig:
+    """Apply only known dataclass fields from an API request."""
+    for section_name, values in options.items():
+        target = getattr(config, section_name, None)
+        if target is None or not isinstance(values, dict):
+            continue
+        allowed = {item.name for item in fields(target)}
+        for name, value in values.items():
+            if name in allowed:
+                setattr(target, name, value)
+    config.validate()
+    return config
+
+
+def create_app(output_root: Path | None = None) -> FastAPI:
+    """Create an independently testable FastAPI application."""
+    app = FastAPI(title="Exam Video Extractor API", version="0.1.0")
+    manager = JobManager(Path(output_root or os.getenv("EXTRACTOR_OUTPUT_DIR", "outputs")))
+    app.state.job_manager = manager
+
+    @app.get("/health/live")
+    def live() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.get("/health/ready")
+    def ready() -> dict[str, Any]:
+        return {"status": "ok", "output_root": str(manager.output_root)}
+
+    @app.get("/api/providers")
+    def providers() -> dict[str, Any]:
+        return {"speech": ["auto", "faster_whisper", "openai_compatible", "none"], "llm": list(available_llm_providers())}
+
+    @app.get("/api/config/default")
+    def default_config() -> dict[str, Any]:
+        config = PipelineConfig()
+        return {"profile": config.profile, "output_dir": str(config.output_dir), "speech": asdict(config.speech), "frames": asdict(config.frames), "ocr": asdict(config.ocr), "llm": asdict(config.llm), "output": asdict(config.output)}
+
+    @app.post("/api/jobs", status_code=202)
+    def create_job(payload: JobRequest) -> dict[str, str]:
+        config = PipelineConfig()
+        config.profile = payload.profile
+        try:
+            _apply_options(config, payload.options)
+            job_id = manager.submit(payload.source, config)
+        except (ExtractorError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"job_id": job_id, "status": "queued"}
+
+    @app.post("/api/jobs/file", status_code=202)
+    async def create_file_job(file: UploadFile = File(...)) -> dict[str, str]:
+        suffix = Path(file.filename or "upload.bin").suffix.lower()
+        if suffix not in {".mp4", ".mkv", ".webm", ".mov", ".m4a", ".mp3", ".wav", ".flac", ".pdf"}:
+            raise HTTPException(status_code=415, detail="Unsupported upload type.")
+        upload_dir = manager.output_root / "uploads"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        path = upload_dir / f"{uuid.uuid4().hex}{suffix}"
+        path.write_bytes(await file.read())
+        return {"job_id": manager.submit(str(path), PipelineConfig()), "status": "queued"}
+
+    @app.get("/api/jobs/{job_id}")
+    def get_job(job_id: str) -> dict[str, Any]:
+        return manager.status(job_id)
+
+    @app.post("/api/jobs/{job_id}/cancel")
+    def cancel_job(job_id: str) -> dict[str, Any]:
+        if not manager.cancel(job_id):
+            raise HTTPException(status_code=404, detail="Job not found.")
+        return {"job_id": job_id, "status": "cancellation_requested"}
+
+    @app.get("/api/jobs/{job_id}/artifacts/{relative:path}")
+    def get_artifact(job_id: str, relative: str) -> FileResponse:
+        return FileResponse(manager.artifact(job_id, relative))
+
+    @app.get("/api/jobs/{job_id}/events")
+    async def events(job_id: str) -> StreamingResponse:
+        async def stream():
+            index = 0
+            while True:
+                with manager.lock:
+                    values = manager.events.get(job_id, [])[index:]
+                    index += len(values)
+                for value in values:
+                    yield f"data: {value}\n\n"
+                status = manager.status(job_id).get("status")
+                if status in {"completed", "failed", "cancelled"} or (values and json.loads(values[-1]).get("event") in {"failed", "completed"}):
+                    break
+                await asyncio.sleep(0.25)
+        return StreamingResponse(stream(), media_type="text/event-stream")
+
+    return app
+
+
+app = create_app()
