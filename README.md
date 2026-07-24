@@ -21,14 +21,15 @@ later phases.
 
 | Phase | Scope | Status |
 |---|---|---|
-| 0 | Contracts, configuration, errors, fixtures, documentation | In progress |
-| 1 | Deterministic CLI extraction pipeline | Planned |
+| 0 | Contracts, configuration, errors, fixtures, documentation | Complete |
+| 1 | Deterministic CLI extraction pipeline | Complete |
 | 2 | Speech-provider implementations | Planned |
 | 3 | LLM-provider implementations | Planned |
 | 4 | Question/answer intelligence | Planned |
 | 5 | FastAPI backend | Planned |
 | 6 | React/Vite frontend | Planned |
 | 7 | Release documentation and packaging | Planned |
+| 8 | Optional release hardening | Planned |
 
 ## Development
 
@@ -37,3 +38,37 @@ will be added as each phase introduces them. Phase 0 intentionally uses the
 standard library for its contracts and self-checks.
 
 See [docs/phase-0.md](docs/phase-0.md) and [docs/architecture.md](docs/architecture.md).
+
+## Phase 1 quick start
+
+Create and activate a virtual environment, then install the backend:
+
+```bash
+python -m venv .venv
+python -m pip install -e backend
+```
+
+Install FFmpeg and Tesseract separately and add them to `PATH`. Then run:
+
+```bash
+python -m exam_extractor run lecture.mp4 --output outputs
+```
+
+For YouTube URLs, `yt-dlp` is installed with the backend. Phase 1 is
+deterministic and does not require an LLM key. See [docs/phase-1.md](docs/phase-1.md)
+for Windows/Linux activation, configuration, resume behavior, output layout,
+and troubleshooting.
+
+## Roadmap and self-hosting
+
+- [Implementation roadmap](docs/roadmap.md)
+- [Self-hosting guide](docs/self-hosting.md)
+- [Docker Hub release plan](docs/docker-release.md)
+- [Configuration reference](docs/configuration.md)
+- [Provider contracts](docs/provider-contracts.md)
+
+The final release README will contain tested Docker Hub and source-install
+commands, provider setup, GPU setup, storage/backup guidance, troubleshooting,
+upgrade instructions, and cleanup procedures. Until those phases are built,
+the commands in `docs/self-hosting.md` are the target release contract rather
+than a claim that the full application already exists.

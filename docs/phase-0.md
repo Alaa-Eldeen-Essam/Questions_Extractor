@@ -19,5 +19,6 @@ python -m unittest discover -s backend/tests -p "test_*.py"
 python -m compileall backend/src
 ```
 
-Phase 0 is complete when both commands pass. Phase 1 can then implement the
-deterministic CLI pipeline against these contracts.
+Both commands pass. Phase 1 can now implement the deterministic CLI pipeline
+against these contracts. See [the full roadmap](roadmap.md), the
+[self-hosting plan](self-hosting.md), and the [Docker Hub release plan](docker-release.md).

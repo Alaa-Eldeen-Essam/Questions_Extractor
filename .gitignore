@@ -15,6 +15,9 @@ venv/
 # Runtime artifacts
 outputs/
 jobs/
+*-smoke-output/
+tmp-*/
+phase1-fixture.mp4
 *.log
 *.whisper.json
 *.ocr.json
