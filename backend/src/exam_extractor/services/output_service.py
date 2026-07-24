@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ..config import PipelineConfig
 from ..models.frames import FrameEvidence, OCRResult
+from ..models.questions import QuestionRecord
 from ..models.sources import SourceMetadata
 from ..models.transcripts import Transcript
 from .serialization import jsonable
@@ -28,6 +29,7 @@ def write_outputs(
     transcript: Transcript,
     frames: list[FrameEvidence],
     ocr: list[OCRResult],
+    questions: list[QuestionRecord],
     config: PipelineConfig,
     warnings: list[str],
 ) -> list[Path]:
@@ -39,6 +41,7 @@ def write_outputs(
         "transcript": transcript,
         "frames": frames,
         "ocr": ocr,
+        "questions": questions,
         "warnings": warnings,
     }
     if config.output.json:
@@ -67,6 +70,21 @@ def write_outputs(
                 lines.append(f"- **{_stamp(segment.start_seconds)}** — {segment.text}")
         else:
             lines.append("No caption transcript was available. Audio was extracted for a future speech provider.")
+        lines += ["", "## Question bank", ""]
+        if questions:
+            for index, question in enumerate(questions, start=1):
+                lines += [f"### {index}. {question.prompt}", ""]
+                for option in question.options:
+                    lines.append(f"- **{option.label}.** {option.text}")
+                if question.answer:
+                    lines += ["", f"**Answer:** {question.answer}"]
+                if question.explanation:
+                    lines += ["", f"**Explanation:** {question.explanation}"]
+                if question.warnings:
+                    lines += ["", *[f"> Warning: {warning}" for warning in question.warnings]]
+                lines.append("")
+        else:
+            lines.append("No question records were detected.")
         lines += ["", "## Visual evidence", ""]
         if ocr:
             for result in ocr:

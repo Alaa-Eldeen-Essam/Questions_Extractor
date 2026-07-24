@@ -102,7 +102,7 @@ application to one vendor.
 
 Changing providers requires configuration changes, not pipeline-code changes.
 
-## Phase 4 — question, answer, and explanation intelligence
+## Phase 4 — question, answer, and explanation intelligence (in progress)
 
 ### Goal
 

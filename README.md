@@ -24,8 +24,8 @@ later phases.
 | 0 | Contracts, configuration, errors, fixtures, documentation | Complete |
 | 1 | Deterministic CLI extraction pipeline | Complete |
 | 2 | Speech-provider implementations | Complete |
-| 3 | LLM-provider implementations | In progress |
-| 4 | Question/answer intelligence | Planned |
+| 3 | LLM-provider implementations | Complete |
+| 4 | Question/answer intelligence | In progress |
 | 5 | FastAPI backend | Planned |
 | 6 | React/Vite frontend | Planned |
 | 7 | Release documentation and packaging | Planned |

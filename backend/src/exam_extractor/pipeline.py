@@ -14,6 +14,9 @@ from .models import (
     FrameEvidence,
     Job,
     JobStatus,
+    AnswerOption,
+    EvidenceKind,
+    EvidenceRef,
     OCRResult,
     SourceKind,
     SourceMetadata,
@@ -24,6 +27,7 @@ from .models import (
     Transcript,
     TranscriptSegment,
     TranscriptWord,
+    QuestionRecord,
 )
 from .services.captions import parse_caption_file
 from .services.media_service import extract_audio, extract_frames
@@ -31,6 +35,7 @@ from .services.ocr_service import extract_ocr
 from .services.output_service import write_json, write_outputs
 from .services.serialization import jsonable
 from .services.speech_service import transcribe_audio
+from .services.question_service import extract_questions
 from .services.source_service import acquire_source, detect_source, load_acquired
 
 
@@ -136,6 +141,47 @@ def _load_ocr(path: Path) -> list[OCRResult]:
             )
         )
     return values
+
+
+def _load_questions(path: Path) -> list[QuestionRecord]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return [
+        QuestionRecord(
+            question_id=item["question_id"],
+            prompt=item["prompt"],
+            options=[
+                AnswerOption(
+                    label=option["label"],
+                    text=option["text"],
+                    evidence=tuple(
+                        EvidenceRef(
+                            kind=EvidenceKind(ref["kind"]),
+                            locator=ref["locator"],
+                            excerpt=ref.get("excerpt"),
+                            confidence=ref.get("confidence"),
+                        )
+                        for ref in option.get("evidence", [])
+                    ),
+                )
+                for option in item.get("options", [])
+            ],
+            answer=item.get("answer"),
+            explanation=item.get("explanation"),
+            visual_description=item.get("visual_description"),
+            evidence=[
+                EvidenceRef(
+                    kind=EvidenceKind(ref["kind"]),
+                    locator=ref["locator"],
+                    excerpt=ref.get("excerpt"),
+                    confidence=ref.get("confidence"),
+                )
+                for ref in item.get("evidence", [])
+            ],
+            warnings=item.get("warnings", []),
+            confidence=item.get("confidence"),
+        )
+        for item in data
+    ]
 
 
 def _read_manifest(path: Path, source: SourceRef) -> dict[str, Any]:
@@ -286,9 +332,21 @@ def run_pipeline(
             write_json(workspace / "ocr.json", ocr)
             complete(StageName.OCR, ocr)
 
+        if should_skip(StageName.QUESTIONS):
+            questions = _load_questions(workspace / "questions.json")
+        else:
+            begin(StageName.QUESTIONS)
+            try:
+                questions = extract_questions(transcript, ocr, config)
+            except ExtractorError as error:
+                manifest.setdefault("warnings", []).append(error.message)
+                questions = []
+            write_json(workspace / "questions.json", questions)
+            complete(StageName.QUESTIONS, questions)
+
         if not should_skip(StageName.RENDER):
             begin(StageName.RENDER)
-            outputs = write_outputs(workspace, metadata, transcript, frames, ocr, config, manifest.get("warnings", []))
+            outputs = write_outputs(workspace, metadata, transcript, frames, ocr, questions, config, manifest.get("warnings", []))
             manifest["outputs"] = [str(path) for path in outputs]
             complete(StageName.RENDER, outputs)
 
