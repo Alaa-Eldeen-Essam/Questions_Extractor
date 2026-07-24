@@ -291,14 +291,15 @@ def run_pipeline(
                 segments.extend(parse_caption_file(caption_path, language="en").segments)
             segments.sort(key=lambda item: item.start_seconds)
             audio_path = acquired.audio_path
-            if source.kind != SourceKind.PDF and not audio_path and acquired.media_path:
+            needs_speech = config.speech.provider.lower() not in {"none", "captions"} and not segments
+            if source.kind != SourceKind.PDF and needs_speech and not audio_path and acquired.media_path:
                 try:
                     audio_path = extract_audio(acquired.media_path, workspace / "audio")
                 except ExtractorError as error:
                     warnings.append(error.message)
             if audio_path:
                 manifest["audio_path"] = str(audio_path)
-            if not segments and audio_path:
+            if not segments and audio_path and needs_speech:
                 try:
                     transcript = transcribe_audio(audio_path, config.speech)
                 except ExtractorError as error:
