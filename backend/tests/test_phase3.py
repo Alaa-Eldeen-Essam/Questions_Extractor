@@ -11,7 +11,10 @@ class Phase3Tests(unittest.TestCase):
         self.assertIsNone(generate("hello", LLMConfig()))
 
     def test_provider_discovery_is_stable(self) -> None:
-        self.assertEqual(available_llm_providers(), ("none", "openai_compatible", "gemini", "ollama"))
+        self.assertEqual(
+            available_llm_providers(),
+            ("none", "openai", "openai_compatible", "openrouter", "gemini", "ollama", "huggingface"),
+        )
 
     def test_openai_compatible_response(self) -> None:
         response = type("Response", (), {"read": lambda self: b'{"choices":[{"message":{"content":"answer"}}]}'})()

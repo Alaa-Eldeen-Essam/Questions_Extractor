@@ -14,7 +14,32 @@ from ..errors import ErrorCode, ExtractorError
 
 def available_llm_providers() -> tuple[str, ...]:
     """Return stable provider names exposed by the built-in adapters."""
-    return ("none", "openai_compatible", "gemini", "ollama")
+    return ("none", "openai", "openai_compatible", "openrouter", "gemini", "ollama", "huggingface")
+
+
+def llm_provider_catalog() -> list[dict[str, Any]]:
+    """Return UI-safe provider metadata and configured-key status."""
+    providers = [
+        ("none", "No LLM", "none", None, None, []),
+        ("openai", "OpenAI", "openai_compatible", "https://api.openai.com/v1", "OPENAI_API_KEY", ["gpt-4o-mini", "gpt-4.1-mini"]),
+        ("openai_compatible", "OpenAI-compatible", "openai_compatible", None, None, ["model-name"]),
+        ("openrouter", "OpenRouter", "openai_compatible", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY", ["openai/gpt-4o-mini", "google/gemini-2.5-flash"]),
+        ("gemini", "Google Gemini", "gemini", None, "GEMINI_API_KEY", ["gemini-2.5-flash", "gemini-2.5-pro"]),
+        ("ollama", "Ollama (local)", "ollama", "http://localhost:11434", None, ["llama3.2", "qwen2.5vl"]),
+        ("huggingface", "Hugging Face", "openai_compatible", "https://router.huggingface.co/v1", "HF_TOKEN", ["Qwen/Qwen2.5-VL-7B-Instruct"]),
+    ]
+    return [
+        {
+            "id": provider_id,
+            "label": label,
+            "adapter": adapter,
+            "default_base_url": base_url,
+            "default_api_key_env": key_env,
+            "configured": provider_id == "none" or not key_env or bool(os.environ.get(key_env)),
+            "model_examples": models,
+        }
+        for provider_id, label, adapter, base_url, key_env, models in providers
+    ]
 
 
 def generate(prompt: str, config: LLMConfig, *, images: Sequence[Path] = (), schema: dict[str, Any] | None = None) -> str | dict[str, Any] | None:
@@ -22,7 +47,7 @@ def generate(prompt: str, config: LLMConfig, *, images: Sequence[Path] = (), sch
     provider = config.provider.lower()
     if not config.enabled or provider == "none":
         return None
-    if provider in {"openai", "openai_compatible"}:
+    if provider in {"openai", "openai_compatible", "openrouter", "huggingface"}:
         return _openai(prompt, config, images, schema)
     if provider == "gemini":
         return _gemini(prompt, config, images, schema)
@@ -79,7 +104,10 @@ def _post(url: str, payload: dict[str, Any], config: LLMConfig, headers: dict[st
 
 
 def _openai(prompt: str, config: LLMConfig, images: Sequence[Path], schema: dict[str, Any] | None) -> Any:
-    if not config.base_url or not config.model:
+    base_url = config.base_url
+    if not base_url and config.provider.lower() == "openai":
+        base_url = "https://api.openai.com/v1"
+    if not base_url or not config.model:
         raise ExtractorError(
             code=ErrorCode.CONFIGURATION,
             message="OpenAI-compatible LLMs require llm.base_url and llm.model.",
@@ -101,7 +129,7 @@ def _openai(prompt: str, config: LLMConfig, images: Sequence[Path], schema: dict
     if schema:
         payload["response_format"] = {"type": "json_schema", "json_schema": {"name": "result", "schema": schema}}
     key = _key(config)
-    data = _post(config.base_url.rstrip("/") + "/chat/completions", payload, config, {"Authorization": f"Bearer {key}"} if key else {})
+    data = _post(base_url.rstrip("/") + "/chat/completions", payload, config, {"Authorization": f"Bearer {key}"} if key else {})
     try:
         content = data["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as exc:

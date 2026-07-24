@@ -15,8 +15,8 @@ from typing import Any
 from .config import PipelineConfig
 from .errors import ErrorCode, ExtractorError
 from .pipeline import _job_id, run_pipeline
-from .services.llm_service import available_llm_providers
-from .services.profiles import apply_profile, profile_catalog, resolved_config
+from .services.llm_service import available_llm_providers, llm_provider_catalog
+from .services.profiles import apply_profile, profile_catalog
 
 try:
     from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -135,6 +135,27 @@ def create_app(output_root: Path | None = None) -> FastAPI:
     @app.get("/api/providers")
     def providers() -> dict[str, Any]:
         return {"speech": ["auto", "faster_whisper", "openai_compatible", "none"], "llm": list(available_llm_providers())}
+
+    @app.get("/api/settings/options")
+    def settings_options() -> dict[str, Any]:
+        """Return safe settings metadata for the collapsed advanced panel."""
+        return {
+            "profiles": profile_catalog(),
+            "languages": [
+                {"id": "auto", "label": "Auto-detect"},
+                {"id": "en", "label": "English"},
+                {"id": "ar", "label": "Arabic"},
+                {"id": "fr", "label": "French"},
+                {"id": "de", "label": "German"},
+                {"id": "es", "label": "Spanish"},
+            ],
+            "ocr_languages": [
+                {"id": "eng", "label": "English"},
+                {"id": "ara", "label": "Arabic"},
+                {"id": "eng+ara", "label": "English + Arabic"},
+            ],
+            "llm": llm_provider_catalog(),
+        }
 
     @app.get("/api/config/default")
     def default_config() -> dict[str, Any]:
