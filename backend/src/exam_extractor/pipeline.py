@@ -66,6 +66,8 @@ def _job_id(source: str, config: PipelineConfig) -> str:
     fingerprint = json.dumps(
         {
             "source": source,
+            "workflow_id": config.workflow_id,
+            "workflow_overrides": config.workflow_overrides,
             "profile": config.profile,
             "speech": config.speech.__dict__,
             "frames": config.frames.__dict__,
@@ -255,6 +257,7 @@ def run_pipeline(
     manifest_path = workspace / "manifest.json"
     manifest = _read_manifest(manifest_path, source)
     manifest["schema_version"] = 1
+    manifest["workflow_id"] = config.workflow_id
     manifest["profile"] = config.profile
     manifest["configuration"] = resolved_config(config)
     if config.privacy.redact_source:

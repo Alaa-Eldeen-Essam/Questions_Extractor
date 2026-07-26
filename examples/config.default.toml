@@ -1,6 +1,12 @@
 profile = "balanced"
 output_dir = "outputs"
 
+[workflow]
+id = "exam_study_pack"
+
+[workflow.blocks.ocr]
+enabled = true
+
 [speech]
 provider = "auto"
 model = "base.en"

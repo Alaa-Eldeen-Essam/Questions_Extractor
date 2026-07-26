@@ -17,6 +17,7 @@ from .errors import ErrorCode, ExtractorError
 from .pipeline import _job_id, _load_questions, run_pipeline
 from .services.llm_service import available_llm_providers, llm_provider_catalog
 from .services.profiles import apply_profile, profile_catalog
+from .services.workflows import workflow_catalog
 from .services.review_service import review_item, review_summary, update_question
 from .services.output_service import write_json
 from .services.serialization import jsonable
@@ -35,6 +36,7 @@ class JobRequest(BaseModel):
 
     source: str = Field(min_length=1, max_length=4096)
     profile: str = "balanced"
+    workflow: str = "exam_study_pack"
     options: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -163,7 +165,19 @@ class JobManager:
 
 def _apply_options(config: PipelineConfig, options: dict[str, Any]) -> PipelineConfig:
     """Apply only known dataclass fields from an API request."""
+    workflow_values = options.get("workflow")
+    if workflow_values is not None:
+        if not isinstance(workflow_values, dict):
+            raise ValueError("options.workflow must be an object")
+        if "id" in workflow_values:
+            config.workflow_id = str(workflow_values["id"])
+        if "blocks" in workflow_values:
+            if not isinstance(workflow_values["blocks"], dict):
+                raise ValueError("options.workflow.blocks must be an object")
+            config.workflow_overrides = workflow_values["blocks"]
     for section_name, values in options.items():
+        if section_name == "workflow":
+            continue
         target = getattr(config, section_name, None)
         if target is None or not isinstance(values, dict):
             continue
@@ -218,19 +232,27 @@ def create_app(output_root: Path | None = None) -> FastAPI:
                 {"id": "eng+ara", "label": "English + Arabic"},
             ],
             "llm": llm_provider_catalog(),
+            "workflows": workflow_catalog(),
         }
+
+    @app.get("/api/workflows")
+    def workflows() -> dict[str, Any]:
+        """List workflow presets without exposing provider credentials."""
+        return {"workflows": workflow_catalog()}
 
     @app.get("/api/config/default")
     def default_config() -> dict[str, Any]:
         config = PipelineConfig()
-        return {"profile": config.profile, "output_dir": str(config.output_dir), "speech": asdict(config.speech), "frames": asdict(config.frames), "ocr": asdict(config.ocr), "llm": asdict(config.llm), "output": asdict(config.output), "privacy": asdict(config.privacy)}
+        return {"workflow": config.workflow_id, "profile": config.profile, "output_dir": str(config.output_dir), "speech": asdict(config.speech), "frames": asdict(config.frames), "ocr": asdict(config.ocr), "llm": asdict(config.llm), "output": asdict(config.output), "privacy": asdict(config.privacy)}
 
     @app.post("/api/jobs", status_code=202)
     def create_job(payload: JobRequest) -> dict[str, str]:
         config = PipelineConfig()
         try:
             apply_profile(config, payload.profile)
+            config.workflow_id = payload.workflow
             _apply_options(config, payload.options)
+            config.validate()
             job_id = manager.submit(payload.source, config)
         except (ExtractorError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc

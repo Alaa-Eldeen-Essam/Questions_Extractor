@@ -21,6 +21,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--config", type=Path, help="TOML configuration file")
     run.add_argument("--output", type=Path, help="job output root; overrides config output_dir")
     run.add_argument("--profile", help="profile label stored in the job manifest")
+    run.add_argument("--workflow", help="workflow preset, e.g. exam_study_pack or lecture_summary")
     run.add_argument("--transcript", action="store_true", help="also write transcript.md")
     run.add_argument("--force", action="store_true", help="discard this generated job and rerun")
     run.add_argument("--verbose", action="store_true", help="print detailed errors")
@@ -36,6 +37,9 @@ def main(argv: list[str] | None = None) -> int:
         config = PipelineConfig.from_toml(args.config) if args.config else PipelineConfig()
         if args.profile:
             apply_profile(config, args.profile)
+        if args.workflow:
+            config.workflow_id = args.workflow
+            config.validate()
         if args.transcript:
             config.output.transcript = True
         workspace = run_pipeline(

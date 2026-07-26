@@ -390,6 +390,54 @@ the selected profile.
 High Accuracy does not silently enable a paid LLM. Enable LLM enrichment explicitly
 in Advanced settings.
 
+### Workflow presets (general multimodal mode)
+
+The default `exam_study_pack` workflow is now one preset over a reusable block
+pipeline. The same application can be used for broader lecture and document
+workflows:
+
+| Workflow | Blocks included | Typical result |
+|---|---|---|
+| `exam_study_pack` | acquire, transcript, frames, OCR, questions, review, artifacts | Questions, answers, explanations, and evidence |
+| `lecture_summary` | acquire, transcript, frames, OCR, summary, artifacts | Lecture summary grounded in speech and visuals |
+| `visual_document` | acquire, frames, OCR, visual notes, artifacts | OCR-first notes from slides, PDFs, or diagrams |
+| `transcript_only` | acquire, transcript, summary, artifacts | Speech-focused notes without visual processing |
+
+Workflow definitions are discoverable at `GET /api/workflows` and are also
+included in `GET /api/settings/options`. Phase 1 exposes the contracts and
+presets; later phases will execute disabled blocks and add custom task and
+artifact controls.
+
+Select a preset in the API or CLI:
+
+~~~json
+{
+  "source": "https://www.youtube.com/watch?v=VIDEO_ID",
+  "workflow": "lecture_summary",
+  "profile": "balanced"
+}
+~~~
+
+~~~powershell
+python -m exam_extractor run "lecture.mp4" --workflow lecture_summary
+~~~
+
+Block overrides are accepted now as a validated contract and will become
+execution controls in the next phase:
+
+~~~json
+{
+  "workflow": "exam_study_pack",
+  "options": {
+    "workflow": {
+      "blocks": {
+        "ocr": {"enabled": false}
+      }
+    }
+  }
+}
+~~~
+
 Example TOML:
 
 ~~~toml
@@ -535,6 +583,7 @@ GET  /health/live
 GET  /health/ready
 GET  /api/providers
 GET  /api/settings/options
+GET  /api/workflows
 GET  /api/config/default
 POST /api/jobs
 POST /api/jobs/file
@@ -552,6 +601,7 @@ Example request:
 ~~~json
 {
   "source": "https://www.youtube.com/watch?v=VIDEO_ID",
+  "workflow": "exam_study_pack",
   "profile": "high_accuracy",
   "options": {
     "speech": {

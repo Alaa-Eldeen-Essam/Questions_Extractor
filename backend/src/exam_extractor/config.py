@@ -81,6 +81,8 @@ class ReviewConfig:
 
 @dataclass
 class PipelineConfig:
+    workflow_id: str = "exam_study_pack"
+    workflow_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
     profile: str = "balanced"
     output_dir: Path = Path("outputs")
     speech: SpeechConfig = field(default_factory=SpeechConfig)
@@ -97,6 +99,16 @@ class PipelineConfig:
         with path.open("rb") as handle:
             data: dict[str, Any] = tomllib.load(handle)
         config = cls()
+        workflow_data = data.get("workflow", {})
+        if isinstance(workflow_data, str):
+            config.workflow_id = workflow_data
+        elif isinstance(workflow_data, dict):
+            config.workflow_id = workflow_data.get("id", config.workflow_id)
+            config.workflow_overrides = workflow_data.get("blocks", config.workflow_overrides)
+        elif workflow_data:
+            raise ValueError("workflow must be a string or a TOML table")
+        config.workflow_id = data.get("workflow_id", config.workflow_id)
+        config.workflow_overrides = data.get("workflow_overrides", config.workflow_overrides)
         config.profile = data.get("profile", config.profile)
         from .services.profiles import apply_profile
 
@@ -120,6 +132,9 @@ class PipelineConfig:
 
     def validate(self) -> None:
         """Validate cross-platform configuration values."""
+        from .services.workflows import resolve_workflow
+
+        resolve_workflow(self.workflow_id, self.workflow_overrides)
         if not self.profile:
             raise ValueError("profile cannot be empty")
         if self.speech.language and self.speech.language.lower() == "auto":
