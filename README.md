@@ -1,29 +1,54 @@
-# Exam Video Extractor
+# SourceFlow
 
-Exam Video Extractor converts YouTube videos, local media, recorded lectures, and
-PDFs into study-ready evidence:
+SourceFlow is a local-first multimodal content workbench. It converts YouTube
+videos, local media, recorded lectures, audio, and PDFs into structured,
+traceable outputs:
 
 - timestamped captions or speech transcripts;
 - sampled video/PDF frames and Tesseract OCR;
 - questions, options, explicit answers, explanations, confidence, and evidence;
-- Markdown and JSON artifacts;
+- summaries, visual notes, custom task results, and transcripts;
+- Markdown, JSON, Word, PDF, CSV, and transcript artifacts;
 - a FastAPI API with a React frontend;
 - optional provider-neutral LLM enrichment.
 
 It is local-first, CPU-first, and LLM-optional. It can use captions, local
 faster-whisper, OpenAI-compatible speech APIs, OpenAI, OpenRouter, Gemini,
-Ollama, or another compatible endpoint.
+Hugging Face, Ollama, or another compatible endpoint.
 
-## Current release
+The repository and Python package still contain the historical
+`exam-video-extractor` name for compatibility. The browser application is
+branded SourceFlow and the Docker image keeps its existing name:
+`alaaeldeenessam/exam-video-extractor`.
 
-The published v0.1.4 image is:
+## Choose an installation path
+
+| Path | Best for | Requirements |
+|---|---|---|
+| Docker Hub image | Zero-code use | Docker Desktop or Docker Engine |
+| Clone + Compose | Reproducible self-hosting or development | Git and Docker Compose |
+| Run from source | Backend/frontend development | Python, Node.js, FFmpeg, Tesseract, Poppler |
+
+For the simplest path, use the Docker Hub image directly. You do not need
+Python, Node.js, or the source repository.
+
+## Published Docker image
+
+The known published image tag is:
 
 ~~~text
-docker.io/alaaeldeenessam/exam-video-extractor:0.1.4
+docker.io/alaaeldeenessam/exam-video-extractor:0.1.0
 ~~~
 
-The workflow also publishes 0.1, latest, and a commit-SHA tag. Use 0.1.4 for
-reproducible deployments and latest only when automatic upgrades are desired.
+Use a version tag for reproducible deployments. Tags are created only after a
+successful GitHub Actions Docker publish run; do not assume that the source
+package version and the newest Docker Hub tag are identical. If a newer tag is
+listed on Docker Hub, replace `0.1.0` in the commands below with that tag.
+
+The `0.1.0` image is the previously published baseline. Newer source commits
+become available as Docker images only after their release tag is pushed and
+the Docker publish workflow succeeds. To run the newest code in your clone
+immediately, use the local build path below.
 
 ## Zero-code Docker usage
 
@@ -33,7 +58,7 @@ installing Python or Node.js, or reading the source code.
 Pull the image:
 
 ~~~powershell
-docker pull alaaeldeenessam/exam-video-extractor:0.1.4
+docker pull alaaeldeenessam/exam-video-extractor:0.1.0
 ~~~
 
 Create persistent Docker volumes once:
@@ -52,7 +77,19 @@ docker run -d `
   --publish 8000:8000 `
   --volume exam_extractor_outputs:/data/outputs `
   --volume exam_extractor_models:/data/models `
-  alaaeldeenessam/exam-video-extractor:0.1.4
+  alaaeldeenessam/exam-video-extractor:0.1.0
+~~~
+
+Linux/macOS:
+
+~~~bash
+docker run -d \
+  --name exam-video-extractor \
+  --restart unless-stopped \
+  --publish 8000:8000 \
+  --volume exam_extractor_outputs:/data/outputs \
+  --volume exam_extractor_models:/data/models \
+  alaaeldeenessam/exam-video-extractor:0.1.0
 ~~~
 
 Open the application in a browser:
@@ -87,13 +124,30 @@ docker volume rm exam_extractor_outputs exam_extractor_models
 Linux users can run the same commands after changing the PowerShell line
 continuation character to a single line or a Bash backslash.
 
+If the container name is already in use, remove only the container and start
+it again. The named volumes remain available:
+
+~~~powershell
+docker rm -f exam-video-extractor
+docker run -d `
+  --name exam-video-extractor `
+  --restart unless-stopped `
+  --publish 8000:8000 `
+  --volume exam_extractor_outputs:/data/outputs `
+  --volume exam_extractor_models:/data/models `
+  alaaeldeenessam/exam-video-extractor:0.1.0
+~~~
+
 ### Direct Docker usage with runtime secrets
 
 Secrets must never be added to the Docker image. An image is shareable and its
 layers can be inspected; baking an API key into it would expose that key to
 anyone who can pull the image. Pass secrets to the container only at runtime.
 
-Create a file named .env in the directory from which you will run Docker:
+Create a file named `.env` on the host only if you want server-side fallback
+keys for CLI or direct API automation. The browser UI uses per-job runtime
+keys, so `.env` is not required when credentials are entered in Advanced
+settings.
 
 ~~~env
 OPENAI_API_KEY=
@@ -112,7 +166,7 @@ docker run -d `
   --env-file .env `
   --volume exam_extractor_outputs:/data/outputs `
   --volume exam_extractor_models:/data/models `
-  alaaeldeenessam/exam-video-extractor:0.1.4
+  alaaeldeenessam/exam-video-extractor:0.1.0
 ~~~
 
 The .env file stays on the host and is not part of the image. Protect it, do
@@ -121,10 +175,15 @@ no remote provider is needed, omit --env-file entirely; captions, OCR,
 deterministic question extraction, and public local Whisper models work without
 API keys.
 
-The keys make providers available to the server; they do not automatically
-select a provider. The UI's collapsed Advanced settings panel can select the
-LLM provider, model, endpoint, output language, OCR language, and input speech
-language. The default no-key path remains fully usable.
+Environment keys are fallback credentials only when a CLI, config, or API
+request explicitly references the corresponding `api_key_env` or
+`remote_api_key_env`. They do not automatically select an LLM provider. The
+UI's collapsed Advanced settings panel selects the provider, model, endpoint,
+output language, OCR language, and input speech language. The default no-key
+path remains fully usable.
+
+Never put a real key in the Dockerfile, image, Git repository, browser local
+storage, or generated artifacts.
 
 For a GUI-only Docker Desktop workflow, create the container in Docker Desktop,
 map host port 8000 to container port 8000, add named volumes at
@@ -229,7 +288,7 @@ OPENROUTER_API_KEY=
 HF_TOKEN=
 
 # Optional:
-# EXTRACTOR_IMAGE=alaaeldeenessam/exam-video-extractor:0.1.4
+# EXTRACTOR_IMAGE=alaaeldeenessam/exam-video-extractor:0.1.0
 # EXTRACTOR_PORT=8000
 # EXTRACTOR_WORKERS=2
 # MAX_UPLOAD_BYTES=4294967296
@@ -238,7 +297,7 @@ HF_TOKEN=
 Windows PowerShell:
 
 ~~~powershell
-$env:EXTRACTOR_IMAGE = "alaaeldeenessam/exam-video-extractor:0.1.4"
+$env:EXTRACTOR_IMAGE = "alaaeldeenessam/exam-video-extractor:0.1.0"
 docker pull $env:EXTRACTOR_IMAGE
 docker compose up -d --no-build
 ~~~
@@ -246,7 +305,7 @@ docker compose up -d --no-build
 Linux:
 
 ~~~bash
-export EXTRACTOR_IMAGE=alaaeldeenessam/exam-video-extractor:0.1.4
+export EXTRACTOR_IMAGE=alaaeldeenessam/exam-video-extractor:0.1.0
 docker pull "$EXTRACTOR_IMAGE"
 docker compose up -d --no-build
 ~~~
@@ -331,14 +390,14 @@ cached models and outputs is intentional.
 4. Optionally expand Advanced settings to select a workflow, task/instruction,
    independent blocks, languages, an LLM provider/model, output formats, or a
    review gate.
-5. Click Extract study material.
+5. Click Process source.
 6. Monitor acquire, speech, frames, OCR, questions, and render.
 7. Download Markdown, JSON, Word, PDF, CSV, transcript, and review artifacts when enabled.
 
 The workflow selector is intentionally hidden in Advanced settings so the
-default experience remains one-click exam extraction. Selecting a workflow
-automatically shows its blocks; unchecking transcript, frames, OCR, review, or
-artifact blocks sends validated overrides to the same backend pipeline.
+default experience remains simple. Selecting a workflow automatically shows
+its blocks; unchecking transcript, frames, OCR, review, or artifact blocks
+sends validated overrides to the same backend pipeline.
 `lecture_summary`, `visual_document`, and `transcript_only` use the generic
 task result panel instead of forcing every source into a question bank.
 
@@ -351,12 +410,19 @@ the container. YouTube acquisition runs inside the container using a
 transcript-first strategy. The application checks its transcript cache, queries
 the available YouTube transcript, and only then makes an isolated yt-dlp
 caption request. Media is downloaded separately without subtitle requests, so
-a subtitle 429 does not force a second full media download. Successful
+a subtitle HTTP 429 does not force a second full media download. Successful
 transcripts are cached below the output root and reused by later jobs. The
 actual language is recorded in `source/metadata.json`, `transcript.json`, and
 the transcript segments; it is never silently labeled as English. A video with
 only Arabic captions therefore produces an Arabic transcript unless an
 optional translation/LLM step is enabled.
+
+If the UI shows `yt-dlp captions were rate-limited`, this is a warning about
+the caption attempt, not an instruction to download subtitles manually.
+Automatic fallback continues with the transcript service, cache, or local
+Whisper according to the selected strategy. If YouTube blocks both captions
+and media, upload a local copy, choose local Whisper, or configure a mounted
+browser cookie file for an advanced server/API job.
 
 Playlist-safe YouTube handling
 
@@ -370,6 +436,21 @@ Advanced settings panel also exposes transcript-first, yt-dlp-first,
 Whisper-first, and captions-only strategies. Caption retries are bounded with
 exponential backoff; the media download remains independent.
 
+The corresponding TOML/API controls are:
+
+~~~toml
+[youtube]
+transcript_strategy = "automatic"
+cache_transcripts = true
+max_caption_retries = 1
+backoff_seconds = 1.0
+# cookie_file = "/run/secrets/youtube-cookies.txt"
+~~~
+
+`cookie_file` is optional and is not exposed as a browser upload. If you use
+it in Docker, mount the file read-only and provide the path inside the
+container. Never commit browser cookies or upload them to a public issue.
+
 ## Speech modes
 
 The pipeline is captions-first. Captions are used whenever available, even
@@ -380,10 +461,9 @@ when the fallback is local or remote speech.
 | auto | captions, then local faster-whisper if absent | first fallback run | normal use |
 | faster_whisper | captions, then local Whisper | yes, cached | local/private processing |
 | openai_compatible | captions, then remote audio transcription | no | hosted speech |
-| captions | captions only; no audio extraction | no | fast captioned videos |
-| none | practical captions/visual-only mode | no | OCR and visual review |
+| none (Captions only) | captions only; no audio extraction | no | fast captioned videos |
 
-The default model is base.en. tiny.en is lighter and faster; larger models need
+The default model is `base.en`. `tiny.en` is lighter and faster; larger models need
 more disk, RAM, and time. CPU selects int8 automatically. The published image
 is CPU-first; CUDA requires a separately prepared GPU runtime.
 
@@ -403,9 +483,9 @@ in Advanced settings.
 
 ### Workflow presets (general multimodal mode)
 
-The default `exam_study_pack` workflow is now one preset over a reusable block
-pipeline. The same application can be used for broader lecture and document
-workflows:
+The default `exam_study_pack` workflow is one preset over a reusable block
+pipeline. The same application supports broader lecture, document, audio, and
+custom-task workflows:
 
 | Workflow | Blocks included | Typical result |
 |---|---|---|
@@ -416,9 +496,8 @@ workflows:
 
 Workflow definitions are discoverable at `GET /api/workflows` and are also
 included in `GET /api/settings/options`. The executor records each block as
-completed or skipped, and disabled blocks still produce safe empty normalized
-artifacts so downstream stages and resumable jobs remain predictable. Later
-phases will add generic task execution and custom artifact controls.
+completed or skipped. Blocks can be enabled or disabled independently, and the
+same pipeline can be resumed from its persisted job workspace.
 
 Select a preset in the API or CLI:
 
@@ -575,6 +654,30 @@ Current LLM providers:
 OpenAI-compatible configuration can be used for OpenAI, OpenRouter, and
 self-hosted compatible servers.
 
+### Runtime provider configuration in the UI
+
+Expand **Advanced settings** before starting a job. Enable **LLM enrichment**
+and enter the values for that job:
+
+| Provider | Model | Base URL | API key |
+|---|---|---|---|
+| Google Gemini | required, for example `gemini-2.5-flash` | leave blank; the built-in Gemini endpoint is used | required |
+| OpenAI | required | prefilled with `https://api.openai.com/v1` | required |
+| OpenRouter | required | prefilled with `https://openrouter.ai/api/v1` | required |
+| OpenAI-compatible | required | required | required |
+| Hugging Face | required | prefilled with `https://router.huggingface.co/v1` | required |
+| Ollama | installed local model | `http://host.docker.internal:11434` from Docker Desktop | not required |
+
+The API-key field is a password field. The key is sent with the job, is not
+stored in browser storage or output artifacts, and is cleared after submission.
+Use HTTPS when the browser is not on the same trusted machine as the backend.
+For Gemini, do not enter a base URL; enter the model and key only.
+
+Remote speech is configured separately by selecting **Remote API** under
+**Speech**. Then open Advanced settings and enter the speech model (commonly
+`whisper-1`), an OpenAI-compatible speech base URL, and its API key. This key
+is also per-job and is cleared after submission.
+
 OpenRouter example:
 
 ~~~toml
@@ -694,7 +797,7 @@ Example request:
       "provider": "openai_compatible",
       "model": "your-model",
       "base_url": "https://api.openai.com/v1",
-      "api_key_env": "OPENAI_API_KEY",
+      "api_key": "ENTER_RUNTIME_KEY_HERE",
       "vision_enabled": true,
       "output_language": "same"
     },
@@ -707,6 +810,12 @@ Example request:
   }
 }
 ~~~
+
+Replace `ENTER_RUNTIME_KEY_HERE` before sending the request and use HTTPS. Do
+not save this request in a committed file or paste a real key into shell
+history. For unattended CLI/server jobs, use `api_key_env` instead and pass
+the environment variable to the process. For remote speech, the equivalent
+runtime fields are `speech.remote_base_url` and `speech.api_key`.
 
 PowerShell request:
 
@@ -809,7 +918,7 @@ results.
 
 | Goal | Speech | LLM | Result |
 |---|---|---|---|
-| fast captioned video | none/captions | none | captions + frames + OCR; no model |
+| fast captioned video | none (Captions only) | none | captions + frames + OCR; no model |
 | private general processing | auto | none | captions or local Whisper |
 | local speech control | faster_whisper | none | local cached model |
 | hosted speech | openai_compatible | optional | audio sent to remote service |
@@ -909,9 +1018,9 @@ DOCKERHUB_TOKEN
 Publish a new release:
 
 ~~~bash
-git tag -a v0.1.4 -m "Release v0.1.4"
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
 git push origin main
-git push origin v0.1.4
+git push origin vX.Y.Z
 ~~~
 
 Monitor the workflow:
