@@ -94,4 +94,5 @@ def resolved_config(config: PipelineConfig) -> dict[str, Any]:
     value["output_dir"] = str(config.output_dir)
     value["speech"]["api_key"] = None
     value["llm"]["api_key"] = None
+    value["youtube"]["cookie_file"] = None
     return value

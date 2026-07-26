@@ -76,6 +76,7 @@ def _job_id(source: str, config: PipelineConfig) -> str:
             "workflow_overrides": config.workflow_overrides,
             "profile": config.profile,
             "speech": speech_identity,
+            "youtube": config.youtube.__dict__,
             "frames": config.frames.__dict__,
             "ocr": config.ocr.__dict__,
             "llm": llm_identity,

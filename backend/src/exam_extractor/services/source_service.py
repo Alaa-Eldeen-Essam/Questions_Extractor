@@ -3,6 +3,7 @@
 import json
 import re
 import shutil
+import time
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -149,6 +150,8 @@ def _youtube_options(target: Path, config: PipelineConfig, *, captions: bool, ca
         )
         if captions_only:
             options["skip_download"] = True
+    if config.youtube.cookie_file:
+        options["cookiefile"] = config.youtube.cookie_file
     return options
 
 
@@ -178,6 +181,43 @@ def _caption_language(path: Path) -> str:
     """Infer a caption language from common yt-dlp/WebVTT filenames."""
     parts = path.stem.split(".")
     return parts[-1] if len(parts) > 1 and parts[-1] else "en"
+
+
+def _youtube_cache_root(target: Path) -> Path:
+    """Return the persistent cache directory shared by jobs in one output root."""
+    return target.parent.parent / "cache" / "youtube"
+
+
+def _cached_transcript(source: str, target: Path, language: str | None, config: PipelineConfig) -> tuple[Path, str] | None:
+    """Copy a cached transcript into the current job when one is available."""
+    if not config.youtube.cache_transcripts:
+        return None
+    video_id = _youtube_video_id(source)
+    if not video_id:
+        return None
+    root = _youtube_cache_root(target) / video_id
+    preferred = language.lower() if language and language.lower() != "auto" else None
+    candidates = list((root / preferred).glob("captions.*.vtt")) if preferred and (root / preferred).is_dir() else list(root.rglob("captions.*.vtt"))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda path: (0 if _caption_language(path).lower().startswith("en") else 1, str(path)))
+    selected = candidates[0]
+    destination = target / selected.name
+    shutil.copy2(selected, destination)
+    return destination, _caption_language(selected)
+
+
+def _cache_transcript(source: str, target: Path, path: Path, config: PipelineConfig) -> None:
+    """Cache one successful transcript without changing the job artifact contract."""
+    if not config.youtube.cache_transcripts:
+        return
+    video_id = _youtube_video_id(source)
+    if not video_id or not path.is_file():
+        return
+    language = _caption_language(path)
+    destination = _youtube_cache_root(target) / video_id / language / path.name
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(path, destination)
 
 
 def _fetch_transcript_fallback(
@@ -265,6 +305,32 @@ def _is_caption_download_error(error: Exception) -> bool:
     return "subtitle" in message or "caption" in message
 
 
+def _is_rate_limited(error: Exception) -> bool:
+    """Identify errors where a bounded retry may help."""
+    message = str(error).lower()
+    return "429" in message or "too many requests" in message or "rate limit" in message or "rate-limit" in message
+
+
+def _download_ytdlp_captions(yt_dlp: Any, source: SourceRef, target: Path, config: PipelineConfig) -> tuple[tuple[Path, ...], str | None]:
+    """Attempt isolated caption download with bounded backoff."""
+    attempts = config.youtube.max_caption_retries + 1
+    for attempt in range(attempts):
+        try:
+            with yt_dlp.YoutubeDL(_youtube_options(target, config, captions=True, captions_only=True)) as downloader:
+                downloader.extract_info(source.value, download=True)
+            captions = tuple(sorted(target.glob("*.vtt")))
+            if captions:
+                return captions, None
+            return (), "YouTube did not expose a downloadable caption track."
+        except Exception as exc:
+            if not _is_rate_limited(exc) or attempt == attempts - 1:
+                return (), f"YouTube captions were unavailable ({exc}); continuing with media-only acquisition."
+            delay = config.youtube.backoff_seconds * (2**attempt)
+            if delay:
+                time.sleep(delay)
+    return (), "YouTube captions were unavailable; continuing with media-only acquisition."
+
+
 def _acquire_youtube(source: SourceRef, target: Path, config: PipelineConfig) -> tuple[AcquiredSource, SourceMetadata]:
     try:
         import yt_dlp
@@ -279,17 +345,29 @@ def _acquire_youtube(source: SourceRef, target: Path, config: PipelineConfig) ->
 
     caption_warning: str | None = None
     caption_provider: str | None = None
-    fallback_caption = _fetch_transcript_fallback(source.value, target, config.speech.language)
-    if fallback_caption:
-        caption_provider = "youtube_transcript_api"
-    else:
-        try:
-            with yt_dlp.YoutubeDL(_youtube_options(target, config, captions=True, captions_only=True)) as downloader:
-                downloader.extract_info(source.value, download=True)
-            if list(target.glob("*.vtt")):
+    strategy = config.youtube.transcript_strategy
+    if strategy == "captions_only":
+        config.speech.provider = "none"
+    if strategy != "whisper_first":
+        cached = _cached_transcript(source.value, target, config.speech.language, config)
+        if cached:
+            caption_provider = "cache"
+        elif strategy != "ytdlp_first":
+            fallback_caption = _fetch_transcript_fallback(source.value, target, config.speech.language)
+            if fallback_caption:
+                _cache_transcript(source.value, target, fallback_caption[0], config)
+                caption_provider = "youtube_transcript_api"
+        if caption_provider is None:
+            caption_paths, caption_warning = _download_ytdlp_captions(yt_dlp, source, target, config)
+            if caption_paths:
                 caption_provider = "yt-dlp"
-        except Exception as exc:  # Caption access is optional; media remains independently recoverable.
-            caption_warning = f"YouTube captions were unavailable ({exc}); continuing with media-only acquisition."
+                for path in caption_paths:
+                    _cache_transcript(source.value, target, path, config)
+            elif strategy == "ytdlp_first":
+                fallback_caption = _fetch_transcript_fallback(source.value, target, config.speech.language)
+                if fallback_caption:
+                    _cache_transcript(source.value, target, fallback_caption[0], config)
+                    caption_provider = "youtube_transcript_api"
 
     try:
         with yt_dlp.YoutubeDL(_youtube_options(target, config, captions=False)) as downloader:

@@ -24,6 +24,17 @@ class SpeechConfig:
 
 
 @dataclass
+class YouTubeConfig:
+    """Controls transcript fallback, caching, retries, and optional cookies."""
+
+    transcript_strategy: str = "automatic"
+    cache_transcripts: bool = True
+    max_caption_retries: int = 1
+    backoff_seconds: float = 1.0
+    cookie_file: str | None = None
+
+
+@dataclass
 class FrameConfig:
     method: str = "scene_change"
     scene_threshold: float = 0.15
@@ -102,6 +113,7 @@ class PipelineConfig:
     profile: str = "balanced"
     output_dir: Path = Path("outputs")
     speech: SpeechConfig = field(default_factory=SpeechConfig)
+    youtube: YouTubeConfig = field(default_factory=YouTubeConfig)
     frames: FrameConfig = field(default_factory=FrameConfig)
     ocr: OCRConfig = field(default_factory=OCRConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
@@ -133,6 +145,7 @@ class PipelineConfig:
         config.output_dir = Path(data.get("output_dir", config.output_dir))
         for section_name, target in (
             ("speech", config.speech),
+            ("youtube", config.youtube),
             ("frames", config.frames),
             ("ocr", config.ocr),
             ("llm", config.llm),
@@ -160,6 +173,7 @@ class PipelineConfig:
         config.output_dir = Path(data.get("output_dir", config.output_dir))
         for section_name, target in (
             ("speech", config.speech),
+            ("youtube", config.youtube),
             ("frames", config.frames),
             ("ocr", config.ocr),
             ("llm", config.llm),
@@ -191,6 +205,12 @@ class PipelineConfig:
             raise ValueError("speech.beam_size must be positive")
         if self.speech.timeout_seconds <= 0:
             raise ValueError("speech.timeout_seconds must be positive")
+        if self.youtube.transcript_strategy not in {"automatic", "transcript_first", "ytdlp_first", "whisper_first", "captions_only"}:
+            raise ValueError("youtube.transcript_strategy is invalid")
+        if self.youtube.max_caption_retries < 0:
+            raise ValueError("youtube.max_caption_retries cannot be negative")
+        if self.youtube.backoff_seconds < 0:
+            raise ValueError("youtube.backoff_seconds cannot be negative")
         if not 0 <= self.ocr.confidence_threshold <= 1:
             raise ValueError("ocr.confidence_threshold must be between 0 and 1")
         if not 0 <= self.review.threshold <= 1:

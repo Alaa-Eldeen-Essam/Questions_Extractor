@@ -11,7 +11,7 @@ from exam_extractor.models import FrameEvidence, OCRResult, SourceKind, SourceMe
 from exam_extractor.models.questions import AnswerOption, QuestionRecord
 from exam_extractor.services.docx_service import write_docx
 from exam_extractor.services.pdf_service import extract_pdf_pages
-from exam_extractor.services.source_service import _fetch_transcript_fallback, _is_caption_download_error, _youtube_options, _youtube_video_id, acquire_source, detect_source
+from exam_extractor.services.source_service import _cached_transcript, _cache_transcript, _download_ytdlp_captions, _fetch_transcript_fallback, _is_caption_download_error, _youtube_options, _youtube_video_id, acquire_source, detect_source
 
 
 class Phase8Tests(unittest.TestCase):
@@ -115,7 +115,7 @@ class Phase8Tests(unittest.TestCase):
                 return {"id": "abc", "title": "Fallback", "duration": 10, "uploader": "test"}
 
         with tempfile.TemporaryDirectory() as directory:
-            target = Path(directory) / "job"
+            target = Path(directory) / "outputs" / "job" / "source"
             fake_module = SimpleNamespace(YoutubeDL=FakeDownloader)
             with patch.dict(sys.modules, {"yt_dlp": fake_module}), patch(
                 "exam_extractor.services.source_service._fetch_transcript_fallback",
@@ -148,7 +148,7 @@ class Phase8Tests(unittest.TestCase):
                 return {"id": "abc", "title": "Transcript first", "duration": 10, "uploader": "test"}
 
         with tempfile.TemporaryDirectory() as directory:
-            target = Path(directory) / "job"
+            target = Path(directory) / "outputs" / "job" / "source"
             target.mkdir(parents=True)
             caption = target / "captions.ar.vtt"
             caption.write_text("WEBVTT\n", encoding="utf-8")
@@ -166,6 +166,56 @@ class Phase8Tests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertNotIn("writesubtitles", calls[0])
         self.assertEqual(metadata.extra["transcript_provider"], "youtube_transcript_api")
+
+    def test_youtube_caption_retry_uses_bounded_backoff(self) -> None:
+        calls = []
+
+        class FakeDownloader:
+            def __init__(self, _options):
+                calls.append(True)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def extract_info(self, _source, download=True):
+                raise RuntimeError("HTTP 429: Too Many Requests")
+
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            config = PipelineConfig()
+            config.youtube.max_caption_retries = 2
+            config.youtube.backoff_seconds = 0.5
+            with patch("exam_extractor.services.source_service.time.sleep") as sleep:
+                captions, warning = _download_ytdlp_captions(
+                    SimpleNamespace(YoutubeDL=FakeDownloader),
+                    SourceRef("https://www.youtube.com/watch?v=abc123", SourceKind.YOUTUBE),
+                    target,
+                    config,
+                )
+        self.assertEqual(captions, ())
+        self.assertIn("unavailable", warning or "")
+        self.assertEqual(len(calls), 3)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [0.5, 1.0])
+
+    def test_youtube_transcript_cache_is_reused(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "outputs"
+            first_target = root / "job-one" / "source"
+            second_target = root / "job-two" / "source"
+            first_target.mkdir(parents=True)
+            second_target.mkdir(parents=True)
+            source = "https://www.youtube.com/watch?v=abc123"
+            caption = first_target / "captions.ar.vtt"
+            caption.write_text("WEBVTT\n", encoding="utf-8")
+            config = PipelineConfig()
+            _cache_transcript(source, first_target, caption, config)
+            cached = _cached_transcript(source, second_target, "ar", config)
+            self.assertIsNotNone(cached)
+            self.assertEqual(cached[1], "ar")
+            self.assertTrue(cached[0].is_file())
 
     def test_word_artifact_is_a_self_contained_docx(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
