@@ -24,6 +24,7 @@ phase1-fixture.mp4
 *.info.json
 *.description
 *.vtt
+!backend/tests/fixtures/*.vtt
 *.mp4
 *.mkv
 *.webm
