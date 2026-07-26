@@ -34,6 +34,7 @@ def write_outputs(
     questions: list[QuestionRecord],
     config: PipelineConfig,
     warnings: list[str],
+    include_review: bool = True,
 ) -> list[Path]:
     """Write Phase 1 output artifacts and return their paths."""
     target.mkdir(parents=True, exist_ok=True)
@@ -45,22 +46,23 @@ def write_outputs(
         "frames": frames,
         "ocr": ocr,
         "questions": questions,
-        "review": review_summary(questions, config.review.threshold),
+        "review": review_summary(questions, config.review.threshold) if include_review else {"enabled": False},
         "warnings": warnings,
     }
     if config.output.json:
         path = target / "extraction.json"
         write_json(path, payload)
         outputs.append(path)
-    review_path = target / "review.json"
-    write_json(
-        review_path,
-        {
-            "summary": review_summary(questions, config.review.threshold),
-            "items": [review_item(question) for question in questions],
-        },
-    )
-    outputs.append(review_path)
+    if include_review:
+        review_path = target / "review.json"
+        write_json(
+            review_path,
+            {
+                "summary": review_summary(questions, config.review.threshold),
+                "items": [review_item(question) for question in questions],
+            },
+        )
+        outputs.append(review_path)
     if config.output.markdown:
         path = target / "extraction.md"
         lines = [

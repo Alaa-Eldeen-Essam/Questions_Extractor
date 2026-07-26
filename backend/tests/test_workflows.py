@@ -4,6 +4,7 @@ import unittest
 from exam_extractor.config import PipelineConfig
 from exam_extractor.pipeline import _job_id
 from exam_extractor.services.workflows import (
+    block_enabled,
     canonical_workflow,
     resolve_workflow,
     workflow_catalog,
@@ -46,6 +47,12 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotEqual(_job_id("lecture.mp4", exam), _job_id("lecture.mp4", summary))
         json.dumps(summary.workflow_overrides)
         summary.validate()
+
+    def test_block_enabled_reflects_overrides_and_unknown_blocks_are_off(self) -> None:
+        overrides = {"ocr": {"enabled": False}}
+        self.assertFalse(block_enabled("exam_study_pack", overrides, "ocr"))
+        self.assertTrue(block_enabled("exam_study_pack", overrides, "frames"))
+        self.assertFalse(block_enabled("exam_study_pack", overrides, "summary"))
 
 
 if __name__ == "__main__":

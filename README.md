@@ -404,9 +404,10 @@ workflows:
 | `transcript_only` | acquire, transcript, summary, artifacts | Speech-focused notes without visual processing |
 
 Workflow definitions are discoverable at `GET /api/workflows` and are also
-included in `GET /api/settings/options`. Phase 1 exposes the contracts and
-presets; later phases will execute disabled blocks and add custom task and
-artifact controls.
+included in `GET /api/settings/options`. The executor records each block as
+completed or skipped, and disabled blocks still produce safe empty normalized
+artifacts so downstream stages and resumable jobs remain predictable. Later
+phases will add generic task execution and custom artifact controls.
 
 Select a preset in the API or CLI:
 
@@ -422,8 +423,7 @@ Select a preset in the API or CLI:
 python -m exam_extractor run "lecture.mp4" --workflow lecture_summary
 ~~~
 
-Block overrides are accepted now as a validated contract and will become
-execution controls in the next phase:
+Block overrides are execution controls:
 
 ~~~json
 {

@@ -1,8 +1,16 @@
 # Implementation roadmap
 
 This roadmap turns the Phase 0 contracts into a self-hostable, portfolio-ready
-application. Every phase has a verification gate. The next phase starts only
-after its gate passes on Windows and Linux where applicable.
+general multimodal application. Exam extraction remains the default preset,
+while lecture summaries, visual documents, and future custom tasks share the
+same block architecture. Every phase has a verification gate. The next phase
+starts only after its gate passes on Windows and Linux where applicable.
+
+## General multimodal extension status
+
+- Phase 1 generalized workflow contracts and four presets: complete.
+- Phase 2 independent block execution and resumable skipped stages: complete.
+- Phase 3 generic instruction-driven tasks: next.
 
 ## Phase 1 — deterministic CLI pipeline
 

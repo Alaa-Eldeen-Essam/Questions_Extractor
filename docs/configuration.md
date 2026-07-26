@@ -25,7 +25,9 @@ are placed in the human-review queue using `review.threshold` (default `0.70`).
 `exam_study_pack`; the other built-in presets are `lecture_summary`,
 `visual_document`, and `transcript_only`. Presets are ordered block contracts,
 not separate applications. This lets the executor, UI, and future custom tasks
-share one configuration format.
+share one configuration format. Blocks can be disabled without changing the
+other extraction channels; the manifest records the resulting stage as
+`skipped` and writes an empty normalized artifact where appropriate.
 
 ```toml
 [workflow]

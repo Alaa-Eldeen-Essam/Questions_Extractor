@@ -115,6 +115,19 @@ def resolve_workflow(
     return workflow
 
 
+def block_enabled(
+    workflow_id: str,
+    overrides: dict[str, dict[str, Any]] | None,
+    block_id: str,
+) -> bool:
+    """Return whether a known block is enabled for one resolved workflow."""
+    workflow = resolve_workflow(workflow_id, overrides)
+    try:
+        return workflow.block(block_id).enabled
+    except KeyError:
+        return False
+
+
 def _validate_dependencies(workflow: WorkflowDefinition) -> None:
     ids = {block.id for block in workflow.blocks}
     for block in workflow.blocks:

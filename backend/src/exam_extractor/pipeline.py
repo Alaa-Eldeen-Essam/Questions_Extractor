@@ -40,6 +40,7 @@ from .services.pdf_service import extract_pdf_pages
 from .services.source_service import acquire_source, detect_source, load_acquired
 from .services.profiles import resolved_config
 from .services.review_service import review_item, review_summary
+from .services.workflows import block_enabled, resolve_workflow, workflow_dict
 
 
 @dataclass
@@ -258,6 +259,7 @@ def run_pipeline(
     manifest = _read_manifest(manifest_path, source)
     manifest["schema_version"] = 1
     manifest["workflow_id"] = config.workflow_id
+    manifest["workflow"] = workflow_dict(resolve_workflow(config.workflow_id, config.workflow_overrides))
     manifest["profile"] = config.profile
     manifest["configuration"] = resolved_config(config)
     if config.privacy.redact_source:
@@ -275,8 +277,16 @@ def run_pipeline(
         return (
             not force
             and manifest.get("stages", {}).get(stage.value, {}).get("status")
-            == StageStatus.COMPLETED.value
+            in {StageStatus.COMPLETED.value, StageStatus.SKIPPED.value}
         )
+
+    def skip(stage: StageName, reason: str) -> None:
+        progress(f"[{stage.value}] skipped: {reason}")
+        manifest["stages"][stage.value] = {
+            "status": StageStatus.SKIPPED.value,
+            "reason": reason,
+        }
+        _write_manifest(manifest_path, manifest)
 
     def begin(stage: StageName) -> None:
         progress(f"[{stage.value}] starting")
@@ -304,7 +314,12 @@ def run_pipeline(
             complete(StageName.ACQUIRE, (acquired, metadata))
         progress(f"[acquire] {metadata.title or source_value}")
 
-        if should_skip(StageName.SPEECH):
+        if not block_enabled(config.workflow_id, config.workflow_overrides, "transcript"):
+            if not should_skip(StageName.SPEECH):
+                skip(StageName.SPEECH, "Transcript block is disabled by the workflow.")
+            transcript = Transcript([], None, "disabled")
+            write_json(workspace / "transcript.json", transcript)
+        elif should_skip(StageName.SPEECH):
             transcript = _load_transcript(workspace / "transcript.json")
             warnings = manifest.get("warnings", [])
         else:
@@ -347,7 +362,12 @@ def run_pipeline(
             write_json(workspace / "transcript.json", transcript)
             complete(StageName.SPEECH, transcript)
 
-        if source.kind == SourceKind.AUDIO:
+        if not block_enabled(config.workflow_id, config.workflow_overrides, "frames"):
+            if not should_skip(StageName.FRAMES):
+                skip(StageName.FRAMES, "Frames block is disabled by the workflow.")
+            frames = []
+            write_json(workspace / "frames.json", frames)
+        elif source.kind == SourceKind.AUDIO:
             frames: list[FrameEvidence] = []
             if not should_skip(StageName.FRAMES):
                 begin(StageName.FRAMES)
@@ -368,7 +388,12 @@ def run_pipeline(
             write_json(workspace / "frames.json", frames)
             complete(StageName.FRAMES, frames)
 
-        if should_skip(StageName.OCR):
+        if not block_enabled(config.workflow_id, config.workflow_overrides, "ocr"):
+            if not should_skip(StageName.OCR):
+                skip(StageName.OCR, "OCR block is disabled by the workflow.")
+            ocr = []
+            write_json(workspace / "ocr.json", ocr)
+        elif should_skip(StageName.OCR):
             ocr = _load_ocr(workspace / "ocr.json")
         else:
             begin(StageName.OCR)
@@ -376,7 +401,12 @@ def run_pipeline(
             write_json(workspace / "ocr.json", ocr)
             complete(StageName.OCR, ocr)
 
-        if should_skip(StageName.QUESTIONS):
+        if not block_enabled(config.workflow_id, config.workflow_overrides, "questions"):
+            if not should_skip(StageName.QUESTIONS):
+                skip(StageName.QUESTIONS, "The question task block is disabled or not part of this workflow.")
+            questions = []
+            write_json(workspace / "questions.json", questions)
+        elif should_skip(StageName.QUESTIONS):
             questions = _load_questions(workspace / "questions.json")
         else:
             begin(StageName.QUESTIONS)
@@ -386,18 +416,41 @@ def run_pipeline(
                 manifest.setdefault("warnings", []).append(error.message)
                 questions = []
             write_json(workspace / "questions.json", questions)
-            manifest["review"] = review_summary(questions, config.review.threshold)
-            write_json(
-                workspace / "review.json",
-                manifest["review"] | {"items": [review_item(question) for question in questions]},
-            )
             complete(StageName.QUESTIONS, questions)
 
-        if not should_skip(StageName.RENDER):
+        if block_enabled(config.workflow_id, config.workflow_overrides, "review"):
+            if should_skip(StageName.REVIEW):
+                review_payload = json.loads((workspace / "review.json").read_text(encoding="utf-8"))
+                manifest["review"] = review_payload.get("summary", {})
+            else:
+                begin(StageName.REVIEW)
+                manifest["review"] = review_summary(questions, config.review.threshold)
+                write_json(
+                    workspace / "review.json",
+                    manifest["review"] | {"items": [review_item(question) for question in questions]},
+                )
+                complete(StageName.REVIEW, manifest["review"])
+        elif not should_skip(StageName.REVIEW):
+            skip(StageName.REVIEW, "Human review block is disabled by the workflow.")
+
+        if block_enabled(config.workflow_id, config.workflow_overrides, "artifacts") and not should_skip(StageName.RENDER):
             begin(StageName.RENDER)
-            outputs = write_outputs(workspace, metadata, transcript, frames, ocr, questions, config, manifest.get("warnings", []))
+            outputs = write_outputs(
+                workspace,
+                metadata,
+                transcript,
+                frames,
+                ocr,
+                questions,
+                config,
+                manifest.get("warnings", []),
+                include_review=block_enabled(config.workflow_id, config.workflow_overrides, "review"),
+            )
             manifest["outputs"] = [str(path) for path in outputs]
             complete(StageName.RENDER, outputs)
+        elif not should_skip(StageName.RENDER):
+            manifest["outputs"] = []
+            skip(StageName.RENDER, "Artifact block is disabled by the workflow.")
 
         manifest["status"] = JobStatus.COMPLETED.value
         _write_manifest(manifest_path, manifest)
