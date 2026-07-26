@@ -1,35 +1,22 @@
-# Phase 6: portfolio frontend
+# Phase 6: workflow-aware portfolio UI
 
-The separate `frontend/` application is React + Vite + TypeScript. It gives a
-new visitor an immediate mental model of the product: source intake, provider
-controls, live stages, warnings, question preview, evidence counts, and
-download links.
+The hidden Advanced Settings panel now exposes the generalized backend without
+making the default intake form intimidating:
 
-## Development
+- workflow preset selection and descriptions;
+- task kind, title, instruction, and maximum item controls;
+- independent block toggles for the selected workflow;
+- provider-neutral LLM, language, output-format, and review-gate controls;
+- PDF, CSV, Word, and transcript download links when artifacts exist;
+- live `task` stages and the `awaiting_review` state.
 
-Start the backend first, then run:
+The simple path still defaults to the exam study pack, balanced processing, auto
+language detection, and no LLM. The API remains the source of truth for all
+settings, so a future workflow editor can use the same contracts.
 
-```bash
-npm --prefix frontend install
-npm --prefix frontend run dev
-```
-
-Set `VITE_API_BASE_URL` when the API is not at `http://localhost:8000`:
-
-```bash
-VITE_API_BASE_URL=http://localhost:8000 npm --prefix frontend run dev
-```
-
-The browser receives only job IDs and public artifacts. Provider API keys stay
-in the backend environment.
-
-## Production build
+## Verification
 
 ```bash
 npm --prefix frontend run build
-npm --prefix frontend run preview
+python -m unittest discover -s backend/tests -p 'test_*.py'
 ```
-
-The interface is responsive, keyboard-usable with native controls, and has
-explicit loading, warning, failure, empty, and completed states. Phase 7 will
-serve this build from Docker alongside the API.

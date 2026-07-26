@@ -328,11 +328,19 @@ cached models and outputs is intentional.
 1. Open http://localhost:8000.
 2. Paste a YouTube URL, or choose Upload file.
 3. Select a speech mode.
-4. Optionally expand Advanced settings to select profiles, languages, an LLM
-   provider/model, or visual analysis.
+4. Optionally expand Advanced settings to select a workflow, task/instruction,
+   independent blocks, languages, an LLM provider/model, output formats, or a
+   review gate.
 5. Click Extract study material.
 6. Monitor acquire, speech, frames, OCR, questions, and render.
 7. Download Markdown, JSON, Word, PDF, CSV, transcript, and review artifacts when enabled.
+
+The workflow selector is intentionally hidden in Advanced settings so the
+default experience remains one-click exam extraction. Selecting a workflow
+automatically shows its blocks; unchecking transcript, frames, OCR, review, or
+artifact blocks sends validated overrides to the same backend pipeline.
+`lecture_summary`, `visual_document`, and `transcript_only` use the generic
+task result panel instead of forcing every source into a question bank.
 
 Uploaded extensions are .mp4, .mkv, .webm, .mov, .m4a, .mp3, .wav, .flac, and
 .pdf. MAX_UPLOAD_BYTES defaults to 4 GiB.
