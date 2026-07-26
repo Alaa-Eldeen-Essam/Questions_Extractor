@@ -140,10 +140,13 @@ def _openai_compatible(audio: Path, config: SpeechConfig) -> Transcript:
         "Content-Type": f"multipart/form-data; boundary={boundary}",
         "Accept": "application/json",
     }
-    if config.remote_api_key_env:
-        api_key = os.environ.get(config.remote_api_key_env)
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
+    api_key = config.api_key or (
+        os.environ.get(config.remote_api_key_env)
+        if config.remote_api_key_env
+        else None
+    )
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     endpoint = config.remote_base_url.rstrip("/") + "/audio/transcriptions"
     try:
         response = request.urlopen(

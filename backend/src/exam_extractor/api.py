@@ -83,7 +83,14 @@ class JobManager:
             event = "awaiting_review" if state == "awaiting_review" else "completed"
             self._record(job_id, {"event": event, "workspace": str(workspace), "status": state})
         except Exception as exc:
-            self._record(job_id, {"event": "failed", "message": str(exc)})
+            message = str(exc)
+            for secret in (config.llm.api_key, config.speech.api_key):
+                if secret:
+                    message = message.replace(secret, "[redacted]")
+            self._record(job_id, {"event": "failed", "message": message})
+        finally:
+            config.llm.api_key = None
+            config.speech.api_key = None
 
     def _record(self, job_id: str, event: dict[str, Any]) -> None:
         with self.lock:

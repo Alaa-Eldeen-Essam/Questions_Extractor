@@ -63,7 +63,7 @@ def generate(prompt: str, config: LLMConfig, *, images: Sequence[Path] = (), sch
 
 
 def _key(config: LLMConfig) -> str | None:
-    return os.environ.get(config.api_key_env) if config.api_key_env else None
+    return config.api_key or (os.environ.get(config.api_key_env) if config.api_key_env else None)
 
 
 def _post(url: str, payload: dict[str, Any], config: LLMConfig, headers: dict[str, str]) -> dict[str, Any]:
@@ -161,8 +161,8 @@ def _gemini(prompt: str, config: LLMConfig, images: Sequence[Path], schema: dict
     if schema:
         generation.update({"responseMimeType": "application/json", "responseSchema": schema})
     payload = {"contents": [{"parts": parts}], "generationConfig": generation}
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{config.model}:generateContent?key={key}"
-    data = _post(url, payload, config, {})
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{config.model}:generateContent"
+    data = _post(url, payload, config, {"x-goog-api-key": key})
     try:
         content = data["candidates"][0]["content"]["parts"][0]["text"]
     except (KeyError, IndexError, TypeError) as exc:

@@ -65,16 +65,20 @@ class PipelineStage(Protocol):
 
 def _job_id(source: str, config: PipelineConfig) -> str:
     """Create a stable job folder name so interrupted runs can resume."""
+    speech_identity = dict(config.speech.__dict__)
+    speech_identity.pop("api_key", None)
+    llm_identity = dict(config.llm.__dict__)
+    llm_identity.pop("api_key", None)
     fingerprint = json.dumps(
         {
             "source": source,
             "workflow_id": config.workflow_id,
             "workflow_overrides": config.workflow_overrides,
             "profile": config.profile,
-            "speech": config.speech.__dict__,
+            "speech": speech_identity,
             "frames": config.frames.__dict__,
             "ocr": config.ocr.__dict__,
-            "llm": config.llm.__dict__,
+            "llm": llm_identity,
             "privacy": config.privacy.__dict__,
             "output": config.output.__dict__,
             "review": config.review.__dict__,

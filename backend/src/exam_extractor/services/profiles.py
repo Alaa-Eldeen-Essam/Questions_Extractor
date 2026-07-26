@@ -92,4 +92,6 @@ def resolved_config(config: PipelineConfig) -> dict[str, Any]:
     """Serialize effective non-secret settings for manifests and diagnostics."""
     value = asdict(config)
     value["output_dir"] = str(config.output_dir)
+    value["speech"]["api_key"] = None
+    value["llm"]["api_key"] = None
     return value

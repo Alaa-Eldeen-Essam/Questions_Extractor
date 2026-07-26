@@ -19,6 +19,7 @@ class SpeechConfig:
     vad_filter: bool = True
     remote_base_url: str | None = None
     remote_api_key_env: str | None = None
+    api_key: str | None = field(default=None, repr=False, compare=False)
     timeout_seconds: float = 120.0
 
 
@@ -46,6 +47,7 @@ class LLMConfig:
     vision_model: str | None = None
     base_url: str | None = None
     api_key_env: str | None = None
+    api_key: str | None = field(default=None, repr=False, compare=False)
     temperature: float = 0.1
     max_tokens: int = 2048
     timeout_seconds: float = 120.0
@@ -142,6 +144,8 @@ class PipelineConfig:
             for key, value in data.get(section_name, {}).items():
                 if not hasattr(target, key):
                     raise ValueError(f"Unknown configuration key: {section_name}.{key}")
+                if key == "api_key":
+                    raise ValueError(f"{section_name}.api_key must be supplied at runtime, not stored in TOML")
                 setattr(target, key, value)
         config.validate()
         return config
@@ -165,7 +169,7 @@ class PipelineConfig:
             ("review", config.review),
         ):
             for key, value in data.get(section_name, {}).items():
-                if hasattr(target, key):
+                if key != "api_key" and hasattr(target, key):
                     setattr(target, key, value)
         config.validate()
         return config
@@ -213,5 +217,13 @@ class PipelineConfig:
             raise ValueError("llm.provider cannot be 'none' when llm.enabled is true")
 
     def api_key(self) -> str | None:
-        """Resolve the configured API key without storing it in the config."""
-        return os.environ.get(self.llm.api_key_env) if self.llm.api_key_env else None
+        """Resolve a per-job key first, then the optional environment fallback."""
+        return self.llm.api_key or (os.environ.get(self.llm.api_key_env) if self.llm.api_key_env else None)
+
+    def speech_api_key(self) -> str | None:
+        """Resolve a per-job speech key first, then the optional environment fallback."""
+        return self.speech.api_key or (
+            os.environ.get(self.speech.remote_api_key_env)
+            if self.speech.remote_api_key_env
+            else None
+        )
