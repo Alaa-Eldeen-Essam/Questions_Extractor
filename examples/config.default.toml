@@ -53,6 +53,8 @@ markdown = true
 json = true
 transcript = false
 word = true
+pdf = false
+csv = false
 include_frame_links = true
 
 [privacy]

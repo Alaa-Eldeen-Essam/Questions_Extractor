@@ -60,6 +60,8 @@ class OutputConfig:
     json: bool = True
     transcript: bool = False
     word: bool = True
+    pdf: bool = False
+    csv: bool = False
     include_frame_links: bool = True
 
 

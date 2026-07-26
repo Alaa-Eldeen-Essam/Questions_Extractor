@@ -12,6 +12,7 @@ from ..models.frames import FrameEvidence, OCRResult
 from ..models.questions import QuestionRecord
 from ..models.sources import SourceMetadata
 from ..models.transcripts import Transcript
+from ..models.tasks import TaskResult
 
 
 EMU_PER_INCH = 914_400
@@ -134,6 +135,7 @@ def write_docx(
     questions: list[QuestionRecord],
     config: PipelineConfig,
     warnings: list[str],
+    task_result: TaskResult | None = None,
 ) -> None:
     """Write a self-contained Word study document using only the standard library."""
     body: list[str] = [_heading(metadata.title or metadata.source.value, 1)]
@@ -150,6 +152,12 @@ def write_docx(
         body.extend(_paragraph(f"- {warning}") for warning in warnings)
     else:
         body.append(_paragraph("- None"))
+
+    if task_result is not None and task_result.kind != "questions":
+        body.append(_heading(task_result.title, 2))
+        body.append(_paragraph(f"Instruction: {task_result.instruction}"))
+        body.append(_paragraph(task_result.content))
+        body.extend(_paragraph(f"- {item}") for item in task_result.items)
 
     body.append(_heading("Question bank", 2))
     if questions:

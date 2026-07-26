@@ -81,6 +81,22 @@ threshold = 0.70
 gate_before_artifacts = false
 ```
 
+## Output formats
+
+```toml
+[output]
+markdown = true
+json = true
+word = true
+pdf = true
+csv = true
+transcript = true
+```
+
+PDF and CSV are opt-in. PDF is generated with the standard library so the
+Docker image does not need a separate PDF dependency; JSON and Markdown remain
+the authoritative Unicode-preserving artifacts.
+
 Set `gate_before_artifacts = true` when a human must approve or reject every
 low-confidence question before final artifacts are generated. The job status
 becomes `awaiting_review`; after all queued records are resolved, call

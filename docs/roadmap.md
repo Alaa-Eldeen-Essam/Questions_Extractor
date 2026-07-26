@@ -12,7 +12,8 @@ starts only after its gate passes on Windows and Linux where applicable.
 - Phase 2 independent block execution and resumable skipped stages: complete.
 - Phase 3 generic instruction-driven tasks: complete.
 - Phase 4 review gates before final artifacts: complete.
-- Phase 5 configurable Markdown, Word, PDF, JSON, and other artifacts: next.
+- Phase 5 configurable Markdown, Word, PDF, JSON, and other artifacts: complete.
+- Phase 6 workflow selection and advanced block controls in the UI: next.
 
 ## Phase 1 — deterministic CLI pipeline
 

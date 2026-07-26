@@ -1,6 +1,8 @@
 """Deterministic Markdown and JSON renderers."""
 
 import json
+import csv
+import io
 from pathlib import Path
 
 from ..config import PipelineConfig
@@ -11,6 +13,7 @@ from ..models.tasks import TaskResult
 from ..models.transcripts import Transcript
 from .serialization import jsonable
 from .docx_service import write_docx
+from .pdf_output_service import write_text_pdf
 from .review_service import review_item, review_summary
 
 
@@ -149,6 +152,30 @@ def write_outputs(
         outputs.append(path)
     if config.output.word:
         path = target / "extraction.docx"
-        write_docx(path, metadata, transcript, frames, ocr, questions, config, warnings)
+        write_docx(path, metadata, transcript, frames, ocr, questions, config, warnings, task_result)
         outputs.append(path)
+    if config.output.csv:
+        path = target / "questions.csv"
+        buffer = io.StringIO(newline="")
+        writer = csv.writer(buffer)
+        writer.writerow(["question_id", "prompt", "options", "answer", "explanation", "confidence", "review_status", "evidence"])
+        for question in questions:
+            writer.writerow([
+                question.question_id,
+                question.prompt,
+                " | ".join(f"{option.label}. {option.text}" for option in question.options),
+                question.answer or "",
+                question.explanation or "",
+                question.confidence if question.confidence is not None else "",
+                question.review_status,
+                " | ".join(reference.locator for reference in question.evidence),
+            ])
+        path.write_text(buffer.getvalue(), encoding="utf-8-sig")
+        outputs.append(path)
+    if config.output.pdf:
+        pdf_path = target / "extraction.pdf"
+        markdown_path = target / "extraction.md"
+        source_text = markdown_path.read_text(encoding="utf-8") if markdown_path.is_file() else json.dumps(jsonable(payload), indent=2, ensure_ascii=False)
+        write_text_pdf(pdf_path, source_text, title=metadata.title or "Extraction")
+        outputs.append(pdf_path)
     return outputs

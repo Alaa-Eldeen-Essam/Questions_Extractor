@@ -23,6 +23,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--profile", help="profile label stored in the job manifest")
     run.add_argument("--workflow", help="workflow preset, e.g. exam_study_pack or lecture_summary")
     run.add_argument("--transcript", action="store_true", help="also write transcript.md")
+    run.add_argument("--pdf", action="store_true", help="also write extraction.pdf")
+    run.add_argument("--csv", action="store_true", help="also write questions.csv")
     run.add_argument("--force", action="store_true", help="discard this generated job and rerun")
     run.add_argument("--verbose", action="store_true", help="print detailed errors")
     return parser
@@ -42,6 +44,10 @@ def main(argv: list[str] | None = None) -> int:
             config.validate()
         if args.transcript:
             config.output.transcript = True
+        if args.pdf:
+            config.output.pdf = True
+        if args.csv:
+            config.output.csv = True
         workspace = run_pipeline(
             args.source,
             config,

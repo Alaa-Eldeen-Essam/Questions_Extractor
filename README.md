@@ -332,7 +332,7 @@ cached models and outputs is intentional.
    provider/model, or visual analysis.
 5. Click Extract study material.
 6. Monitor acquire, speech, frames, OCR, questions, and render.
-7. Download Markdown, JSON, Word, transcript, and review artifacts when enabled.
+7. Download Markdown, JSON, Word, PDF, CSV, transcript, and review artifacts when enabled.
 
 Uploaded extensions are .mp4, .mkv, .webm, .mov, .m4a, .mp3, .wav, .flac, and
 .pdf. MAX_UPLOAD_BYTES defaults to 4 GiB.
@@ -497,6 +497,27 @@ retention policies.
 
 Tesseract OCR is included and defaults to English eng data. Frames are retained
 as evidence so OCR can be reviewed against the source image.
+
+### Output formats
+
+Output formats are independently configurable under `[output]` or API
+`options.output`. Markdown, JSON, and Word are enabled by default; PDF and CSV
+are opt-in because they add storage and rendering work.
+
+~~~toml
+[output]
+markdown = true
+json = true
+word = true
+pdf = true
+csv = true
+transcript = true
+~~~
+
+The PDF writer is dependency-free and preserves the full Unicode source in
+JSON/Markdown; standard PDF fonts replace characters they cannot represent.
+CSV exports the structured question bank and is empty-but-valid for workflows
+that produce summaries or visual notes instead of questions.
 
 Default settings:
 
@@ -752,10 +773,13 @@ frames.json         frame timestamps and methods
 ocr.json            OCR text, confidence, and frame references
 transcript.json     timestamped transcript segments and words
 questions.json      structured questions and evidence
+task.json           renderer-neutral task result
 review.json         review queue, decisions, and confidence summary
 extraction.json     combined machine-readable output
 extraction.md       human-readable study output
 extraction.docx     Word study document with text and embedded visual evidence
+extraction.pdf      optional portable text PDF
+questions.csv       optional spreadsheet-friendly question export
 transcript.md       optional readable transcript
 ~~~
 
