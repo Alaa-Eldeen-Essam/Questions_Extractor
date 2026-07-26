@@ -49,6 +49,8 @@ class Phase8Tests(unittest.TestCase):
         config.speech.language = "ar"
         options = _youtube_options(Path("outputs"), config, captions=True)
         self.assertEqual(options["subtitleslangs"], ["ar", "ar.*"])
+        caption_only = _youtube_options(Path("outputs"), config, captions=True, captions_only=True)
+        self.assertTrue(caption_only["skip_download"])
 
     def test_transcript_fallback_writes_webvtt(self) -> None:
         class FakeApi:
@@ -115,7 +117,10 @@ class Phase8Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "job"
             fake_module = SimpleNamespace(YoutubeDL=FakeDownloader)
-            with patch.dict(sys.modules, {"yt_dlp": fake_module}):
+            with patch.dict(sys.modules, {"yt_dlp": fake_module}), patch(
+                "exam_extractor.services.source_service._fetch_transcript_fallback",
+                return_value=None,
+            ):
                 acquired, metadata = acquire_source(
                     SourceRef("https://www.youtube.com/watch?v=abc", SourceKind.YOUTUBE),
                     target,
@@ -124,6 +129,43 @@ class Phase8Tests(unittest.TestCase):
         self.assertIsNotNone(acquired.media_path)
         self.assertFalse(metadata.has_captions)
         self.assertIn("caption_warning", metadata.extra)
+
+    def test_youtube_transcript_is_preferred_before_media_download(self) -> None:
+        calls = []
+
+        class FakeDownloader:
+            def __init__(self, options):
+                calls.append(options)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def extract_info(self, _source, download=True):
+                (target / "media.mp4").write_bytes(b"video")
+                return {"id": "abc", "title": "Transcript first", "duration": 10, "uploader": "test"}
+
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "job"
+            target.mkdir(parents=True)
+            caption = target / "captions.ar.vtt"
+            caption.write_text("WEBVTT\n", encoding="utf-8")
+            fake_module = SimpleNamespace(YoutubeDL=FakeDownloader)
+            with patch.dict(sys.modules, {"yt_dlp": fake_module}), patch(
+                "exam_extractor.services.source_service._fetch_transcript_fallback",
+                return_value=(caption, "ar"),
+            ):
+                _, metadata = acquire_source(
+                    SourceRef("https://www.youtube.com/watch?v=abc", SourceKind.YOUTUBE),
+                    target,
+                    PipelineConfig(),
+                )
+
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn("writesubtitles", calls[0])
+        self.assertEqual(metadata.extra["transcript_provider"], "youtube_transcript_api")
 
     def test_word_artifact_is_a_self_contained_docx(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -120,8 +120,8 @@ def _acquire_local(source: SourceRef, target: Path) -> tuple[AcquiredSource, Sou
     return acquired, metadata
 
 
-def _youtube_options(target: Path, config: PipelineConfig, *, captions: bool) -> dict[str, Any]:
-    """Build yt-dlp options, allowing media acquisition without captions."""
+def _youtube_options(target: Path, config: PipelineConfig, *, captions: bool, captions_only: bool = False) -> dict[str, Any]:
+    """Build yt-dlp options for isolated caption or media acquisition."""
     options: dict[str, Any] = {
         "outtmpl": str(target / "media.%(ext)s"),
         "format": f"bv*[height<={config.frames.max_resolution}]+ba/b[height<={config.frames.max_resolution}]/b",
@@ -147,6 +147,8 @@ def _youtube_options(target: Path, config: PipelineConfig, *, captions: bool) ->
                 "subtitlesformat": "vtt",
             }
         )
+        if captions_only:
+            options["skip_download"] = True
     return options
 
 
@@ -183,7 +185,7 @@ def _fetch_transcript_fallback(
     target: Path,
     preferred_language: str | None = None,
 ) -> tuple[Path, str] | None:
-    """Fetch a visible YouTube transcript when yt-dlp captions are rate-limited.
+    """Fetch a visible YouTube transcript before making yt-dlp requests.
 
     English is preferred, but a video may expose only another transcript language
     (for example, an Arabic auto-generated transcript).  Returning that language
@@ -276,41 +278,32 @@ def _acquire_youtube(source: SourceRef, target: Path, config: PipelineConfig) ->
         ) from exc
 
     caption_warning: str | None = None
+    caption_provider: str | None = None
+    fallback_caption = _fetch_transcript_fallback(source.value, target, config.speech.language)
+    if fallback_caption:
+        caption_provider = "youtube_transcript_api"
+    else:
+        try:
+            with yt_dlp.YoutubeDL(_youtube_options(target, config, captions=True, captions_only=True)) as downloader:
+                downloader.extract_info(source.value, download=True)
+            if list(target.glob("*.vtt")):
+                caption_provider = "yt-dlp"
+        except Exception as exc:  # Caption access is optional; media remains independently recoverable.
+            caption_warning = f"YouTube captions were unavailable ({exc}); continuing with media-only acquisition."
+
     try:
-        with yt_dlp.YoutubeDL(_youtube_options(target, config, captions=True)) as downloader:
+        with yt_dlp.YoutubeDL(_youtube_options(target, config, captions=False)) as downloader:
             info = downloader.extract_info(source.value, download=True)
     except Exception as exc:  # yt-dlp exposes several version-specific exceptions.
-        if not _is_caption_download_error(exc):
-            raise ExtractorError(
-                code=ErrorCode.SOURCE_UNAVAILABLE,
-                message=f"Could not acquire YouTube source: {exc}",
-                stage="acquire",
-                provider="yt-dlp",
-                source=source.value,
-                retryable=True,
-                suggestion="Check the URL, network access, video availability, and FFmpeg installation.",
-            ) from exc
-        fallback_caption = _fetch_transcript_fallback(source.value, target, config.speech.language)
-        if fallback_caption:
-            caption_warning = (
-                "yt-dlp captions were rate-limited; an automatic YouTube transcript "
-                f"fallback was used (language: {fallback_caption[1]})."
-            )
-        else:
-            caption_warning = f"YouTube captions were unavailable ({exc}); continuing with media-only acquisition."
-        try:
-            with yt_dlp.YoutubeDL(_youtube_options(target, config, captions=False)) as downloader:
-                info = downloader.extract_info(source.value, download=True)
-        except Exception as retry_error:
-            raise ExtractorError(
-                code=ErrorCode.SOURCE_UNAVAILABLE,
-                message=f"Could not acquire YouTube media after captions failed: {retry_error}",
-                stage="acquire",
-                provider="yt-dlp",
-                source=source.value,
-                retryable=True,
-                suggestion="Wait for the YouTube rate limit to clear, upload a local file, or check the URL and network access.",
-            ) from retry_error
+        raise ExtractorError(
+            code=ErrorCode.SOURCE_UNAVAILABLE,
+            message=f"Could not acquire YouTube media: {exc}",
+            stage="acquire",
+            provider="yt-dlp",
+            source=source.value,
+            retryable=True,
+            suggestion="Check the URL, network access, video availability, and FFmpeg installation.",
+        ) from exc
 
     media_candidates = [
         path for path in target.glob("media.*") if path.suffix.lower() not in {".json", ".vtt"}
@@ -326,6 +319,8 @@ def _acquire_youtube(source: SourceRef, target: Path, config: PipelineConfig) ->
         )
     captions = tuple(sorted(target.glob("*.vtt")))
     extra = {"id": info.get("id"), "uploader": info.get("uploader")}
+    if caption_provider:
+        extra["transcript_provider"] = caption_provider
     if caption_warning:
         extra["caption_warning"] = caption_warning
     metadata = SourceMetadata(
