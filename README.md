@@ -438,6 +438,35 @@ Block overrides are execution controls:
 }
 ~~~
 
+Task instructions are independent from the renderer. For example, this uses
+the lecture-summary evidence channels and asks an enabled provider for a
+custom study format:
+
+~~~json
+{
+  "source": "lecture.mp4",
+  "workflow": "lecture_summary",
+  "options": {
+    "task": {
+      "kind": "custom",
+      "instruction": "Create a glossary of five important terms with a short definition and source timestamp.",
+      "title": "Lecture glossary",
+      "max_items": 5
+    },
+    "llm": {
+      "enabled": true,
+      "provider": "openrouter",
+      "model": "openai/gpt-4o-mini",
+      "api_key_env": "OPENROUTER_API_KEY"
+    }
+  }
+}
+~~~
+
+Without an LLM, `summary` and `visual_notes` use deterministic local output.
+`custom` requires an enabled provider and fails with an actionable error when
+the instruction or provider is missing.
+
 Example TOML:
 
 ~~~toml

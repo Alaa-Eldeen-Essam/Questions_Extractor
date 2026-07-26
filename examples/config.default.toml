@@ -42,6 +42,12 @@ retry_count = 1
 vision_enabled = true
 output_language = "same"
 
+[task]
+kind = "auto"
+instruction = ""
+max_items = 100
+include_evidence = true
+
 [output]
 markdown = true
 json = true

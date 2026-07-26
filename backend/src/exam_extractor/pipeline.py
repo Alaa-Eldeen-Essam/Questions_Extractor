@@ -24,6 +24,7 @@ from .models import (
     StageName,
     StageResult,
     StageStatus,
+    TaskResult,
     Transcript,
     TranscriptSegment,
     TranscriptWord,
@@ -35,11 +36,11 @@ from .services.ocr_service import extract_ocr
 from .services.output_service import write_json, write_outputs
 from .services.serialization import jsonable
 from .services.speech_service import transcribe_audio
-from .services.question_service import extract_questions
 from .services.pdf_service import extract_pdf_pages
 from .services.source_service import acquire_source, detect_source, load_acquired
 from .services.profiles import resolved_config
 from .services.review_service import review_item, review_summary
+from .services.task_service import execute_task, resolve_task_kind, task_block_enabled
 from .services.workflows import block_enabled, resolve_workflow, workflow_dict
 
 
@@ -193,6 +194,21 @@ def _load_questions(path: Path) -> list[QuestionRecord]:
             )
         for item in data
     ]
+
+
+def _load_task_result(path: Path) -> TaskResult:
+    """Load the renderer-neutral task result produced by a prior run."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return TaskResult(
+        kind=data.get("kind", "unknown"),
+        title=data.get("title", "Task result"),
+        instruction=data.get("instruction", ""),
+        content=data.get("content", ""),
+        items=data.get("items", []),
+        evidence=data.get("evidence", []),
+        warnings=data.get("warnings", []),
+        llm_used=bool(data.get("llm_used", False)),
+    )
 
 
 def _caption_language(path: Path) -> str:
@@ -401,22 +417,43 @@ def run_pipeline(
             write_json(workspace / "ocr.json", ocr)
             complete(StageName.OCR, ocr)
 
-        if not block_enabled(config.workflow_id, config.workflow_overrides, "questions"):
-            if not should_skip(StageName.QUESTIONS):
-                skip(StageName.QUESTIONS, "The question task block is disabled or not part of this workflow.")
+        task_kind = resolve_task_kind(config)
+        task_stage = StageName.QUESTIONS if task_kind == "questions" else StageName.TASK
+        if not task_block_enabled(config):
+            if config.workflow_id == "exam_study_pack":
+                task_stage = StageName.QUESTIONS
+            if not should_skip(task_stage):
+                skip(task_stage, "The task block is disabled or not part of this workflow.")
             questions = []
+            task_result = TaskResult(kind="none", title="No task", instruction="")
             write_json(workspace / "questions.json", questions)
-        elif should_skip(StageName.QUESTIONS):
+            write_json(workspace / "task.json", task_result)
+        elif should_skip(task_stage):
             questions = _load_questions(workspace / "questions.json")
+            task_result = _load_task_result(workspace / "task.json") if (workspace / "task.json").is_file() else TaskResult(
+                kind=task_kind,
+                title="Question bank" if task_kind == "questions" else "Task result",
+                instruction="",
+                questions=questions,
+            )
         else:
-            begin(StageName.QUESTIONS)
+            begin(task_stage)
             try:
-                questions = extract_questions(transcript, ocr, config)
+                task_result = execute_task(transcript, ocr, config)
+                questions = task_result.questions
             except ExtractorError as error:
                 manifest.setdefault("warnings", []).append(error.message)
                 questions = []
+                task_result = TaskResult(
+                    kind=task_kind,
+                    title=config.task.title or "Task result",
+                    instruction=config.task.instruction,
+                    warnings=[error.message],
+                )
             write_json(workspace / "questions.json", questions)
-            complete(StageName.QUESTIONS, questions)
+            write_json(workspace / "task.json", task_result)
+            manifest["task"] = jsonable(task_result)
+            complete(task_stage, task_result)
 
         if block_enabled(config.workflow_id, config.workflow_overrides, "review"):
             if should_skip(StageName.REVIEW):
@@ -445,6 +482,7 @@ def run_pipeline(
                 config,
                 manifest.get("warnings", []),
                 include_review=block_enabled(config.workflow_id, config.workflow_overrides, "review"),
+                task_result=task_result,
             )
             manifest["outputs"] = [str(path) for path in outputs]
             complete(StageName.RENDER, outputs)

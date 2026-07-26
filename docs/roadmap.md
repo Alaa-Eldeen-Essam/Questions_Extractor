@@ -10,7 +10,8 @@ starts only after its gate passes on Windows and Linux where applicable.
 
 - Phase 1 generalized workflow contracts and four presets: complete.
 - Phase 2 independent block execution and resumable skipped stages: complete.
-- Phase 3 generic instruction-driven tasks: next.
+- Phase 3 generic instruction-driven tasks: complete.
+- Phase 4 review gates before final artifacts: next.
 
 ## Phase 1 — deterministic CLI pipeline
 

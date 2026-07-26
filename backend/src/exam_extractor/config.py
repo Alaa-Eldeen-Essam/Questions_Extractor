@@ -80,6 +80,17 @@ class ReviewConfig:
 
 
 @dataclass
+class TaskConfig:
+    """Controls the generic instruction-driven task block."""
+
+    kind: str = "auto"
+    instruction: str = ""
+    title: str | None = None
+    max_items: int = 100
+    include_evidence: bool = True
+
+
+@dataclass
 class PipelineConfig:
     workflow_id: str = "exam_study_pack"
     workflow_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -89,6 +100,7 @@ class PipelineConfig:
     frames: FrameConfig = field(default_factory=FrameConfig)
     ocr: OCRConfig = field(default_factory=OCRConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
+    task: TaskConfig = field(default_factory=TaskConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
     review: ReviewConfig = field(default_factory=ReviewConfig)
@@ -119,6 +131,7 @@ class PipelineConfig:
             ("frames", config.frames),
             ("ocr", config.ocr),
             ("llm", config.llm),
+            ("task", config.task),
             ("output", config.output),
             ("privacy", config.privacy),
             ("review", config.review),
@@ -159,6 +172,10 @@ class PipelineConfig:
             raise ValueError("llm.timeout_seconds must be positive")
         if self.llm.retry_count < 0:
             raise ValueError("llm.retry_count cannot be negative")
+        if self.task.kind.strip().lower() not in {"auto", "questions", "summary", "visual_notes", "custom", "none"}:
+            raise ValueError("task.kind must be auto, questions, summary, visual_notes, custom, or none")
+        if self.task.max_items <= 0:
+            raise ValueError("task.max_items must be positive")
         if self.speech.language is not None and not self.speech.language.strip():
             raise ValueError("speech.language must be a language code or null for auto detection")
         if not self.llm.output_language.strip():

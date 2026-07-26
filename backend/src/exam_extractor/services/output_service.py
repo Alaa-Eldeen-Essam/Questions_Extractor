@@ -7,6 +7,7 @@ from ..config import PipelineConfig
 from ..models.frames import FrameEvidence, OCRResult
 from ..models.questions import QuestionRecord
 from ..models.sources import SourceMetadata
+from ..models.tasks import TaskResult
 from ..models.transcripts import Transcript
 from .serialization import jsonable
 from .docx_service import write_docx
@@ -35,6 +36,7 @@ def write_outputs(
     config: PipelineConfig,
     warnings: list[str],
     include_review: bool = True,
+    task_result: TaskResult | None = None,
 ) -> list[Path]:
     """Write Phase 1 output artifacts and return their paths."""
     target.mkdir(parents=True, exist_ok=True)
@@ -46,6 +48,7 @@ def write_outputs(
         "frames": frames,
         "ocr": ocr,
         "questions": questions,
+        "task": task_result,
         "review": review_summary(questions, config.review.threshold) if include_review else {"enabled": False},
         "warnings": warnings,
     }
@@ -53,6 +56,10 @@ def write_outputs(
         path = target / "extraction.json"
         write_json(path, payload)
         outputs.append(path)
+        if task_result is not None:
+            task_path = target / "task.json"
+            write_json(task_path, task_result)
+            outputs.append(task_path)
     if include_review:
         review_path = target / "review.json"
         write_json(
@@ -85,8 +92,18 @@ def write_outputs(
                 lines.append(f"- **{_stamp(segment.start_seconds)}** — {segment.text}")
         else:
             lines.append("No caption transcript was available. Audio was extracted for a future speech provider.")
-        lines += ["", "## Question bank", ""]
-        if questions:
+        if task_result is not None and task_result.kind != "questions":
+            lines += ["", f"## {task_result.title}", "", f"**Instruction:** {task_result.instruction}", ""]
+            if isinstance(task_result.content, (dict, list)):
+                lines += ["```json", json.dumps(jsonable(task_result.content), indent=2, ensure_ascii=False), "```", ""]
+            else:
+                lines += [str(task_result.content or "No task content was produced."), ""]
+            if task_result.items:
+                lines += ["### Structured items", ""]
+                lines.extend(f"- {json.dumps(jsonable(item), ensure_ascii=False)}" for item in task_result.items)
+        else:
+            lines += ["", "## Question bank", ""]
+        if questions and (task_result is None or task_result.kind == "questions"):
             for index, question in enumerate(questions, start=1):
                 lines += [f"### {index}. {question.prompt}", ""]
                 for option in question.options:
@@ -99,7 +116,7 @@ def write_outputs(
                     lines += ["", *[f"> Warning: {warning}" for warning in question.warnings]]
                 lines += [f"**Review status:** {question.review_status}"]
                 lines.append("")
-        else:
+        elif task_result is None or task_result.kind == "questions":
             lines.append("No question records were detected.")
         lines += ["", "## Visual evidence", ""]
         if ocr:

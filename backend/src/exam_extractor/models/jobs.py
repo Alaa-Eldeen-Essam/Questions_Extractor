@@ -28,6 +28,7 @@ class StageName(StrEnum):
     OCR = "ocr"
     VISUAL_ANALYSIS = "visual_analysis"
     QUESTIONS = "questions"
+    TASK = "task"
     REVIEW = "review"
     VALIDATE_OUTPUT = "validate_output"
     RENDER = "render"

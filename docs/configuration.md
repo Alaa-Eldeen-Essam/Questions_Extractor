@@ -42,6 +42,27 @@ The same structure can be sent in an API request under
 accepted, and misspelled block ids fail with an actionable validation error.
 Inspect the available contracts with `GET /api/workflows`.
 
+## Task instructions
+
+The task block resolves to `questions`, `summary`, `visual_notes`, or `custom`.
+`auto` inherits the selected workflow's task. Built-in summary and visual-note
+tasks work without an LLM. A custom task requires both an instruction and an
+enabled provider.
+
+```toml
+[task]
+kind = "custom"
+instruction = "Create a glossary with definitions and timestamps."
+title = "Lecture glossary"
+max_items = 5
+
+[llm]
+enabled = true
+provider = "openrouter"
+model = "openai/gpt-4o-mini"
+api_key_env = "OPENROUTER_API_KEY"
+```
+
 Example:
 
 ```toml

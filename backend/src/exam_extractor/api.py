@@ -243,7 +243,7 @@ def create_app(output_root: Path | None = None) -> FastAPI:
     @app.get("/api/config/default")
     def default_config() -> dict[str, Any]:
         config = PipelineConfig()
-        return {"workflow": config.workflow_id, "profile": config.profile, "output_dir": str(config.output_dir), "speech": asdict(config.speech), "frames": asdict(config.frames), "ocr": asdict(config.ocr), "llm": asdict(config.llm), "output": asdict(config.output), "privacy": asdict(config.privacy)}
+        return {"workflow": config.workflow_id, "profile": config.profile, "output_dir": str(config.output_dir), "speech": asdict(config.speech), "frames": asdict(config.frames), "ocr": asdict(config.ocr), "llm": asdict(config.llm), "task": asdict(config.task), "output": asdict(config.output), "privacy": asdict(config.privacy)}
 
     @app.post("/api/jobs", status_code=202)
     def create_job(payload: JobRequest) -> dict[str, str]:
