@@ -78,4 +78,10 @@ output_language = "same"
 [review]
 enabled = true
 threshold = 0.70
+gate_before_artifacts = false
 ```
+
+Set `gate_before_artifacts = true` when a human must approve or reject every
+low-confidence question before final artifacts are generated. The job status
+becomes `awaiting_review`; after all queued records are resolved, call
+`POST /api/jobs/{job_id}/review/complete` to resume rendering.

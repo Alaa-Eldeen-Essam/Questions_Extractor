@@ -14,6 +14,7 @@ class JobStatus(StrEnum):
     CREATED = "created"
     RUNNING = "running"
     COMPLETED = "completed"
+    AWAITING_REVIEW = "awaiting_review"
     FAILED = "failed"
     CANCELLED = "cancelled"
 

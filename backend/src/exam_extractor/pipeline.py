@@ -470,6 +470,17 @@ def run_pipeline(
         elif not should_skip(StageName.REVIEW):
             skip(StageName.REVIEW, "Human review block is disabled by the workflow.")
 
+        if (
+            config.review.gate_before_artifacts
+            and block_enabled(config.workflow_id, config.workflow_overrides, "review")
+            and manifest.get("review", {}).get("needs_review", 0) > 0
+        ):
+            manifest["status"] = JobStatus.AWAITING_REVIEW.value
+            manifest["outputs"] = []
+            _write_manifest(manifest_path, manifest)
+            progress("[review] awaiting human approval before artifact generation")
+            return workspace
+
         if block_enabled(config.workflow_id, config.workflow_overrides, "artifacts") and not should_skip(StageName.RENDER):
             begin(StageName.RENDER)
             outputs = write_outputs(

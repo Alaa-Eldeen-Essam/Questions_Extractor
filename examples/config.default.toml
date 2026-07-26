@@ -62,3 +62,4 @@ redact_source = false
 [review]
 enabled = true
 threshold = 0.70
+gate_before_artifacts = false

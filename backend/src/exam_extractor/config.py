@@ -77,6 +77,7 @@ class ReviewConfig:
 
     enabled: bool = True
     threshold: float = 0.70
+    gate_before_artifacts: bool = False
 
 
 @dataclass
@@ -140,6 +141,30 @@ class PipelineConfig:
                 if not hasattr(target, key):
                     raise ValueError(f"Unknown configuration key: {section_name}.{key}")
                 setattr(target, key, value)
+        config.validate()
+        return config
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "PipelineConfig":
+        """Rebuild a config from a redacted, resolved manifest configuration."""
+        config = cls()
+        config.workflow_id = data.get("workflow_id", config.workflow_id)
+        config.workflow_overrides = data.get("workflow_overrides", config.workflow_overrides)
+        config.profile = data.get("profile", config.profile)
+        config.output_dir = Path(data.get("output_dir", config.output_dir))
+        for section_name, target in (
+            ("speech", config.speech),
+            ("frames", config.frames),
+            ("ocr", config.ocr),
+            ("llm", config.llm),
+            ("task", config.task),
+            ("output", config.output),
+            ("privacy", config.privacy),
+            ("review", config.review),
+        ):
+            for key, value in data.get(section_name, {}).items():
+                if hasattr(target, key):
+                    setattr(target, key, value)
         config.validate()
         return config
 

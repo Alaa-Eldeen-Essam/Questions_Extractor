@@ -79,7 +79,9 @@ class JobManager:
 
         try:
             workspace = run_pipeline(source, config, output_root=self.output_root, progress=progress)
-            self._record(job_id, {"event": "completed", "workspace": str(workspace)})
+            state = self.status(job_id).get("status")
+            event = "awaiting_review" if state == "awaiting_review" else "completed"
+            self._record(job_id, {"event": event, "workspace": str(workspace), "status": state})
         except Exception as exc:
             self._record(job_id, {"event": "failed", "message": str(exc)})
 
@@ -156,10 +158,26 @@ class JobManager:
         return review_item(question)
 
     def complete_review(self, job_id: str) -> dict[str, Any]:
-        """Record that the reviewer finished the current queue."""
+        """Record review completion and resume a gated job when required."""
         payload = self.review(job_id)
+        if payload["summary"].get("needs_review", 0):
+            raise ValueError("Review cannot be completed while needs_review items remain.")
         payload["completed_by_human"] = True
         write_json(self.output_root / job_id / "review.json", payload)
+        manifest_path = self.output_root / job_id / "manifest.json"
+        if manifest_path.is_file():
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            configuration = manifest.get("configuration")
+            gate_enabled = bool(configuration and configuration.get("review", {}).get("gate_before_artifacts"))
+            if gate_enabled and manifest.get("status") == "awaiting_review":
+                metadata_path = self.output_root / job_id / "source" / "metadata.json"
+                if not metadata_path.is_file():
+                    raise FileNotFoundError("The source metadata needed to resume this gated job is missing.")
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                source = metadata["source"]["value"]
+                config = PipelineConfig.from_dict(configuration)
+                run_pipeline(source, config, output_root=self.output_root, progress=lambda message: self._record(job_id, {"event": "progress", "message": message}))
+                payload["status"] = self.status(job_id).get("status")
         return payload
 
 
@@ -243,7 +261,7 @@ def create_app(output_root: Path | None = None) -> FastAPI:
     @app.get("/api/config/default")
     def default_config() -> dict[str, Any]:
         config = PipelineConfig()
-        return {"workflow": config.workflow_id, "profile": config.profile, "output_dir": str(config.output_dir), "speech": asdict(config.speech), "frames": asdict(config.frames), "ocr": asdict(config.ocr), "llm": asdict(config.llm), "task": asdict(config.task), "output": asdict(config.output), "privacy": asdict(config.privacy)}
+        return {"workflow": config.workflow_id, "profile": config.profile, "output_dir": str(config.output_dir), "speech": asdict(config.speech), "frames": asdict(config.frames), "ocr": asdict(config.ocr), "llm": asdict(config.llm), "task": asdict(config.task), "output": asdict(config.output), "privacy": asdict(config.privacy), "review": asdict(config.review)}
 
     @app.post("/api/jobs", status_code=202)
     def create_job(payload: JobRequest) -> dict[str, str]:
@@ -317,6 +335,8 @@ def create_app(output_root: Path | None = None) -> FastAPI:
             return manager.complete_review(job_id)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post("/api/jobs/{job_id}/cancel")
     def cancel_job(job_id: str) -> dict[str, Any]:
@@ -343,7 +363,7 @@ def create_app(output_root: Path | None = None) -> FastAPI:
                 for value in values:
                     yield f"data: {value}\n\n"
                 status = manager.status(job_id).get("status")
-                if status in {"completed", "failed", "cancelled"} or (values and json.loads(values[-1]).get("event") in {"failed", "completed"}):
+                if status in {"completed", "awaiting_review", "failed", "cancelled"} or (values and json.loads(values[-1]).get("event") in {"failed", "completed", "awaiting_review"}):
                     break
                 await asyncio.sleep(0.25)
         return StreamingResponse(stream(), media_type="text/event-stream")

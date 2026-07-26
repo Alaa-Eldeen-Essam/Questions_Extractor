@@ -603,6 +603,13 @@ prompt, options, answer, explanation, and reviewer note, then approve, edit, or
 reject the record. Review state is persisted in `review.json`, `questions.json`,
 `extraction.json`, `extraction.md`, and the Word artifact.
 
+For a strict human gate, set `review.gate_before_artifacts = true` (or send the
+same value under `options.review`). The job then becomes `awaiting_review` and
+does not create final extraction artifacts until every queued question is
+approved, edited, or rejected. Resolve the queue through the review endpoints,
+then call `POST /api/jobs/{job_id}/review/complete`; the resumable pipeline
+continues from the review stage and creates the artifacts.
+
 ## Advanced API
 
 The server is available at http://localhost:8000.
