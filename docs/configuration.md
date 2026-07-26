@@ -11,8 +11,10 @@ Safe defaults favor local, deterministic processing:
 - Markdown and JSON enabled;
 - full transcript disabled unless explicitly requested.
 
-API keys are referenced by environment-variable name and are never stored in
-TOML configuration or job artifacts.
+The web UI accepts provider API keys at runtime for one job; runtime keys are
+kept in memory, redacted from manifests and logs, and cleared after execution.
+Environment-variable names remain an optional fallback for CLI/server use.
+Never store a raw key in TOML, source control, job artifacts, or request logs.
 
 The web UI and API provide Fast, Balanced, and High Accuracy profiles. Advanced
 values override the selected profile. Input language defaults to auto-detect;

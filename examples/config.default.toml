@@ -20,6 +20,12 @@ timeout_seconds = 120.0
 # remote_base_url = "http://localhost:8000/v1"
 # remote_api_key_env = "OPENAI_API_KEY"
 
+[youtube]
+transcript_strategy = "automatic"
+cache_transcripts = true
+max_caption_retries = 1
+backoff_seconds = 1.0
+
 [frames]
 method = "scene_change"
 scene_threshold = 0.15

@@ -347,25 +347,28 @@ Uploaded extensions are .mp4, .mkv, .webm, .mov, .m4a, .mp3, .wav, .flac, and
 
 A host path typed into a browser is not automatically visible inside Docker. Use
 the upload control, bind-mount the directory, or pass a path that exists inside
-the container. YouTube acquisition runs inside the container using yt-dlp and
-tries to obtain English manual or automatic WebVTT captions. If YouTube
-rate-limits yt-dlp subtitle requests, the application automatically queries the
-video transcript, prefers English, and otherwise uses the first available
-manual or auto-generated language. The actual language is recorded in
-`source/metadata.json`, `transcript.json`, and the transcript segments; it is
-never silently labeled as English. A video with only Arabic captions therefore
-produces an Arabic transcript unless an optional translation/LLM step is
-enabled.
+the container. YouTube acquisition runs inside the container using a
+transcript-first strategy. The application checks its transcript cache, queries
+the available YouTube transcript, and only then makes an isolated yt-dlp
+caption request. Media is downloaded separately without subtitle requests, so
+a subtitle 429 does not force a second full media download. Successful
+transcripts are cached below the output root and reused by later jobs. The
+actual language is recorded in `source/metadata.json`, `transcript.json`, and
+the transcript segments; it is never silently labeled as English. A video with
+only Arabic captions therefore produces an Arabic transcript unless an
+optional translation/LLM step is enabled.
 
 Playlist-safe YouTube handling
 
 You can paste a normal watch URL even when it includes `list=`, `index=`, or
 `t=` parameters. The extractor forces single-video acquisition, so it does not
 download the whole playlist. A visible YouTube transcript is used directly;
-there is no separate subtitle-download action for the user. The fallback uses
-the public `youtube-transcript-api` package, then skips local Whisper when a
-transcript is found. If no transcript exists in any language, `auto` falls
-back to local Whisper as documented below.
+there is no separate subtitle-download action for the user. The default
+strategy uses the public `youtube-transcript-api` package first, then isolated
+yt-dlp captions, and finally local Whisper if no transcript is available. The
+Advanced settings panel also exposes transcript-first, yt-dlp-first,
+Whisper-first, and captions-only strategies. Caption retries are bounded with
+exponential backoff; the media download remains independent.
 
 ## Speech modes
 
@@ -562,12 +565,12 @@ Current LLM providers:
 | Provider | Endpoint style | Required configuration |
 |---|---|---|
 | none | no network call | none |
-| openai | /chat/completions | model, OPENAI_API_KEY |
-| openai_compatible | /chat/completions | base_url, model, api_key_env |
-| openrouter | /chat/completions | model, OPENROUTER_API_KEY |
-| gemini | native generateContent | model, api_key_env |
+| openai | /chat/completions | model, runtime API key or optional environment fallback |
+| openai_compatible | /chat/completions | base_url, model, runtime API key |
+| openrouter | /chat/completions | model, runtime API key or optional environment fallback |
+| gemini | native generateContent | model, runtime API key or optional environment fallback |
 | ollama | /api/chat | base_url, model |
-| huggingface | OpenAI-compatible /chat/completions | base_url, model, HF_TOKEN |
+| huggingface | OpenAI-compatible /chat/completions | base_url, model, runtime API key or optional environment fallback |
 
 OpenAI-compatible configuration can be used for OpenAI, OpenRouter, and
 self-hosted compatible servers.
@@ -611,8 +614,12 @@ The Ollama model must already exist on the Ollama host. On Linux, use a
 reachable host address or configure a host-gateway mapping.
 
 The UI exposes speech selection, real processing profiles, language selection,
-LLM provider/model controls, and visual-analysis controls in the collapsed
-Advanced settings panel. API keys are never sent to or displayed by the browser.
+LLM provider/model controls, YouTube transcript strategy, and visual-analysis
+controls in the collapsed Advanced settings panel. API keys can be entered as
+runtime per-job credentials. They are sent to the backend only for that job,
+are not saved in browser storage or artifacts, and are cleared after submission.
+Use a trusted local deployment or HTTPS before entering credentials. `.env`
+environment variables remain an optional fallback for CLI and automated use.
 
 ## Language handling
 
@@ -718,8 +725,11 @@ $response
 Invoke-RestMethod "http://localhost:8000/api/jobs/$($response.job_id)"
 ~~~
 
-Do not put raw API keys in JSON. api_key_env names an environment variable
-available to the server; the actual key remains in .env or a secret store.
+For the browser UI, enter the provider API key in the password field; it is
+sent as a per-job runtime credential and is not persisted. For direct API
+requests, the `options.llm.api_key` field accepts the runtime key over HTTPS.
+Do not commit request bodies, logs, or shell history containing a real key.
+`api_key_env` remains available for CLI/server environment fallbacks.
 
 ## Source installation
 
